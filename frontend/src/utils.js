@@ -1,0 +1,16 @@
+export function extractClientName(markdown) {
+  const labeled = markdown.match(
+    /\*?\*?(?:Client|Company|Account|Customer)(?:\s+Name)?\*?\*?\s*[:\|]\s*\**([^\n\|*]+)\**/i
+  )
+  if (labeled) return labeled[1].trim()
+
+  const table = markdown.match(
+    /\|\s*(?:Client|Company|Account|Customer)(?:\s+Name)?\s*\|\s*([^\|]+)\|/i
+  )
+  if (table) return table[1].trim()
+
+  const h1 = markdown.match(/^#\s+(.+)$/m)
+  if (h1) return h1[1].trim()
+
+  return 'Unknown Client'
+}
