@@ -95,16 +95,16 @@ DOCUMENT CONTROL
 
 
 ───────────────────────────────────────────────────────────
-CLIENT SOLUTIONS
+BUSINESS REQUIREMENTS
 ───────────────────────────────────────────────────────────
 
-- Create one row per distinct solution the client is asking for — not per feature or action
+- Create one row per distinct business requirement the client is asking for — not per feature or action
 - Each row should represent a complete business need, not a granular sub-step
-- Solution Name: short plain English name with no acronyms or jargon — spell out technical terms in full e.g. "Permit application management" not "PTW"
-- Description: 2-4 sentences describing what the solution should do, how it works at a high level, and what outcome it delivers for the client. Do not describe technical implementation. Write as if explaining to someone with no product knowledge.
-- Constraints: list any constraints specific to this solution only — not client-level constraints. Leave blank if none apply.
-- Use the format CR-01, CR-02, CR-03 for IDs — do not use letter suffixes
-- After completing the table, cross-check every problem point in §2.1 — every problem must be addressed by at least one solution row. Add missing rows if needed.
+- Business Name: short plain English name with no acronyms or jargon — spell out technical terms in full e.g. "Permit application management" not "PTW"
+- Description: 2-4 sentences describing what the requirement should do, how it works at a high level, and what outcome it delivers for the client. Do not describe technical implementation. Write as if explaining to someone with no product knowledge.
+- Constraints: list any constraints specific to this requirement only — not client-level constraints. Leave blank if none apply.
+- Use the format BR-01, BR-02, BR-03 for BRD IDs — do not use letter suffixes
+- After completing the table, cross-check every problem point in §2.1 — every problem must be addressed by at least one requirement row. Add missing rows if needed.
 
 
 ───────────────────────────────────────────────────────────
