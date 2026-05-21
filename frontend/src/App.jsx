@@ -67,19 +67,15 @@ export default function App() {
       .then(r => {
         if (r.ok) {
           setAuthenticated(true)
-          setAuthLoading(false)
-          // Strip corridor launch params from URL
           const url = new URL(window.location.href)
           if (url.searchParams.has('launch')) {
             url.searchParams.delete('launch')
             url.searchParams.delete('project')
             window.history.replaceState({}, '', url.toString())
           }
-        } else {
-          redirectToCorridorAuth()
         }
       })
-      .catch(() => redirectToCorridorAuth())
+      .finally(() => setAuthLoading(false))
   }, [])
 
   // Callback route

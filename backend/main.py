@@ -288,7 +288,6 @@ async def auth_me(claims: dict = Depends(require_auth)):
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    _: dict = Depends(require_auth),
 ):
     ext = Path(file.filename).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -330,7 +329,6 @@ class LogToSheetRequest(BaseModel):
 async def analyze(
     notes: str = Form(default=""),
     files: list[UploadFile] = File(default=[]),
-    _: dict = Depends(require_auth),
 ):
     file_parts = []
     for file in files:
@@ -360,7 +358,7 @@ Client Notes:
 
 
 @app.post("/clarify")
-async def clarify(req: ClarifyRequest, _: dict = Depends(require_auth)):
+async def clarify(req: ClarifyRequest):
     model = get_model(load_context())
     answers_text = ""
     if req.answers:
@@ -402,7 +400,7 @@ Respond with ONLY a JSON array of question strings, no other text. Example: ["Qu
 
 
 @app.post("/generate")
-async def generate(req: GenerateRequest, _: dict = Depends(require_auth)):
+async def generate(req: GenerateRequest):
     model = get_model(load_context())
     answers_text = "\n".join(
         f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
@@ -453,7 +451,7 @@ Produce the full CRD in Markdown format.{filename_instruction}"""
 
 
 @app.post("/regenerate")
-async def regenerate_section(req: RegenerateRequest, _: dict = Depends(require_auth)):
+async def regenerate_section(req: RegenerateRequest):
     if not req.section.strip():
         raise HTTPException(status_code=400, detail="section is required")
     model = get_model(load_context())
@@ -472,7 +470,7 @@ Return ONLY the complete updated Markdown document with that section rewritten. 
 
 
 @app.post("/export/docx")
-async def export_docx(req: ExportRequest, _: dict = Depends(require_auth)):
+async def export_docx(req: ExportRequest):
     script = Path(__file__).parent / "md_to_docx.js"
     with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w", encoding="utf-8") as md_f:
         md_f.write(req.crd)
@@ -501,7 +499,7 @@ async def export_docx(req: ExportRequest, _: dict = Depends(require_auth)):
 
 
 @app.post("/log-to-sheet")
-async def log_to_sheet(req: LogToSheetRequest, _: dict = Depends(require_auth)):
+async def log_to_sheet(req: LogToSheetRequest):
     date_str = datetime.date.today().strftime("%-d %b %y")
     try:
         import gspread
