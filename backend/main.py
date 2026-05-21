@@ -51,7 +51,7 @@ def get_features_from_sheet() -> str:
         creds = Credentials.from_service_account_file(str(CREDENTIALS_PATH), scopes=scopes)
         gc = gspread.authorize(creds)
         ws = gc.open_by_key(SHEET_ID).worksheet(SHEET_WORKSHEET)
-        rows = ws.get_all_records()
+        rows = ws.get_all_records(expected_headers=['ID', 'Domain', 'Feature Name', 'Key User Story', 'Status', 'User Persona', 'Dependencies', 'BrdID'])
 
         current_statuses = {"Completed", "In Progress"}
         current, future = [], []
