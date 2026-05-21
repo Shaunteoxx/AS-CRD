@@ -351,12 +351,6 @@ Produce the full CRD in Markdown format.{filename_instruction}"""
         crd, count=1, flags=re.IGNORECASE,
     )
 
-    try:
-        client_name = extract_client_name_from_crd(crd)
-        write_to_cr_sheet(crd_id, client_name)
-    except Exception as exc:
-        logger.warning("CR sheet write failed (%s); CRD was still generated successfully.", exc)
-
     return {"crd": crd, "crd_id": crd_id}
 
 
