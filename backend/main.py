@@ -230,14 +230,20 @@ async def clarify(req: ClarifyRequest):
             f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
         )
 
+    features_text = get_features_from_sheet()
+    features_block = (
+        f"\n\n--- ALLOCATE SPACE PLATFORM FEATURES (live from product sheet) ---\n{features_text}\n---"
+        if features_text else ""
+    )
+
     response = model.generate_content(
-        f"""Based on the client notes and analysis below, generate 3–5 targeted clarifying questions needed to complete a CRD. Only ask what is truly necessary.
+        f"""Based on the client notes and analysis below, generate 3–5 targeted clarifying questions needed to complete a CRD. Only ask what is truly necessary. Do not ask about platform features or capabilities — these are already known from the product sheet above.
 
 Client Notes:
 {req.notes}
 
 Analysis:
-{req.analysis}{answers_text}
+{req.analysis}{answers_text}{features_block}
 
 Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
     )
