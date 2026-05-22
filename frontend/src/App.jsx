@@ -64,6 +64,12 @@ export default function App() {
   useEffect(() => {
     if (window.location.pathname === '/auth/callback') return
 
+    if (!CORRIDOR_CLIENT_ID) {
+      setAuthenticated(true)
+      setAuthLoading(false)
+      return
+    }
+
     authFetch(`${API}/auth/me`)
       .then(r => {
         if (r.ok) {

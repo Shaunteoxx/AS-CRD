@@ -123,7 +123,11 @@ AI Instructions:
 
 ---
 
-## 4. Supporting Evidence
+*This docs was auto-generated from unstructured source documents. All content should be reviewed and validated by the team before use.*
+
+---
+
+## Appendix A — Supporting Evidence
 
 <!--
 AI Instructions:
@@ -141,7 +145,7 @@ AI Instructions:
 
 ---
 
-## 5. Internal Notes
+## Appendix B — Internal Notes
 
 <!--
 AI Instructions:
@@ -159,7 +163,7 @@ _(URL — added once the BRD is created)_
 
 ---
 
-## 6. Open Issues & Questions
+## Appendix C — Open Issues & Questions
 
 <!--
 AI Instructions:
@@ -174,21 +178,3 @@ AI Instructions:
 |---|---|---|---|
 | 1 | | AI-generated | Open |
 | 2 | | AI-generated | Open |
-
----
-
-*This docs was auto-generated from unstructured source documents. All content should be reviewed and validated by the team before use.*
-
----
-
-## Appendix — Source Documents
-
-<!--
-AI Instructions:
-- List every source document used to fill in this CRD.
--->
-
-| Document Name | Type | Link / Location |
-|---|---|---|
-| | Meeting Notes / Email / Transcript / Proposal / Presentation / Other | |
-| | | |
