@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import UploadArea from './components/UploadArea'
 import ChatDisplay from './components/ChatDisplay'
+import CRDReview from './components/CRDReview'
 import CRDOutput from './components/CRDOutput'
 import CRDHistoryModal from './components/CRDHistoryModal'
 import AuthCallback from './components/AuthCallback'
@@ -146,32 +147,35 @@ export default function App() {
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
-      const newCrd = data.crd
-      const newCrdId = data.crd_id || 'crd'
-      setCrd(newCrd)
-      setCrdId(newCrdId)
+      setCrd(data.crd)
+      setCrdId(data.crd_id || 'crd')
       setPhase(3)
-
-      const entry = {
-        id: crypto.randomUUID(),
-        crdId: newCrdId,
-        clientName: extractClientName(newCrd),
-        dateGenerated: new Date().toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        }),
-        crd: newCrd,
-      }
-      const updated = [entry, ...crdHistory]
-      setCrdHistory(updated)
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
-      setCurrentHistoryId(entry.id)
     } catch (e) {
       setError(`Generation failed: ${e.message}`)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleConfirmChanges = (finalCrd) => {
+    setCrd(finalCrd)
+    setPhase(4)
+
+    const entry = {
+      id: crypto.randomUUID(),
+      crdId,
+      clientName: extractClientName(finalCrd),
+      dateGenerated: new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+      crd: finalCrd,
+    }
+    const updated = [entry, ...crdHistory]
+    setCrdHistory(updated)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+    setCurrentHistoryId(entry.id)
   }
 
   const handleRename = (newName) => {
@@ -215,7 +219,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              {['Analyze', 'Clarify', 'Generate'].map((label, i) => {
+              {['Analyze', 'Clarify', 'Review', 'Export'].map((label, i) => {
                 const p = i + 1
                 return (
                   <div key={p} className="flex items-center gap-2">
@@ -233,7 +237,7 @@ export default function App() {
                     <span className={`text-xs hidden sm:block ${phase === p ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
                       {label}
                     </span>
-                    {i < 2 && <div className="w-6 h-px bg-gray-200" />}
+                    {i < 3 && <div className="w-6 h-px bg-gray-200" />}
                   </div>
                 )
               })}
@@ -299,7 +303,10 @@ export default function App() {
             {phase === 2 && (
               <ChatDisplay analysis={analysis} questions={questions} onGenerate={handleGenerate} loading={loading} />
             )}
-            {phase === 3 && <CRDOutput crd={crd} crdId={crdId} onRename={handleRename} />}
+            {phase === 3 && (
+              <CRDReview crd={crd} onConfirm={handleConfirmChanges} />
+            )}
+            {phase === 4 && <CRDOutput crd={crd} crdId={crdId} onRename={handleRename} onBack={() => setPhase(3)} />}
           </div>
         </main>
       </div>

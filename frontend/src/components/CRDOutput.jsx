@@ -2,14 +2,13 @@ import { useState, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useGoogleLogin } from '@react-oauth/google'
-import { DownloadIcon, PencilIcon, SparklesIcon, XIcon, CloudUploadIcon } from './Icons'
+import { DownloadIcon, PencilIcon, CloudUploadIcon, ArrowLeftIcon } from './Icons'
 import { extractClientName, authFetch } from '../utils'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const GDOCS_TOKEN_KEY = 'google_oauth_token'
 const GDOCS_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-// Replace with your CRD folder ID from the Google Drive URL (/folders/<ID>)
 const CRD_FOLDER_ID = '1MTojq7o5eU6ypCb7JrXhnpo4Q34X8UzF'
 
 function getStoredToken() {
@@ -88,16 +87,8 @@ async function logUploadToSheet(filename, clientName, driveLink) {
   }
 }
 
-export default function CRDOutput({ crd, crdId, onRename }) {
-  const [content, setContent] = useState(crd)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-
-  const [regenOpen, setRegenOpen] = useState(false)
-  const [regenSection, setRegenSection] = useState('')
-  const [regenInstruction, setRegenInstruction] = useState('')
-  const [regenerating, setRegenerating] = useState(false)
-  const [regenError, setRegenError] = useState('')
+export default function CRDOutput({ crd, crdId, onRename, onBack }) {
+  const content = crd
 
   const [docId, setDocId] = useState(crdId || 'crd')
   const [idEditing, setIdEditing] = useState(false)
@@ -174,56 +165,6 @@ export default function CRDOutput({ crd, crdId, onRename }) {
     }
   }
 
-  const enterEdit = () => {
-    setDraft(content)
-    setEditing(true)
-  }
-
-  const saveEdit = () => {
-    setContent(draft)
-    setEditing(false)
-    closeRegen()
-  }
-
-  const cancelEdit = () => {
-    setEditing(false)
-    closeRegen()
-  }
-
-  const openRegen = () => {
-    setRegenSection('')
-    setRegenInstruction('')
-    setRegenError('')
-    setRegenOpen(true)
-  }
-
-  const closeRegen = () => {
-    setRegenOpen(false)
-    setRegenSection('')
-    setRegenInstruction('')
-    setRegenError('')
-  }
-
-  const handleRegenerate = async () => {
-    setRegenerating(true)
-    setRegenError('')
-    try {
-      const res = await authFetch(`${API}/regenerate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ crd: draft, section: regenSection, instruction: regenInstruction }),
-      })
-      if (!res.ok) throw new Error(`Regeneration failed (${res.status})`)
-      const data = await res.json()
-      setDraft(data.crd)
-      closeRegen()
-    } catch (e) {
-      setRegenError(e.message)
-    } finally {
-      setRegenerating(false)
-    }
-  }
-
   const downloadMd = () => {
     const blob = new Blob([content], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
@@ -238,7 +179,7 @@ export default function CRDOutput({ crd, crdId, onRename }) {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">Phase 3 — Generated CRD</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Phase 4 — Export CRD</h2>
           <div className="flex items-center gap-2">
             {idEditing ? (
               <input
@@ -264,59 +205,35 @@ export default function CRDOutput({ crd, crdId, onRename }) {
                 <PencilIcon className="w-2.5 h-2.5 opacity-0 group-hover:opacity-50 transition-opacity flex-shrink-0" />
               </span>
             )}
-            <p className="text-sm text-gray-500">Review your document below, then download in your preferred format.</p>
+            <p className="text-sm text-gray-500">Your document is ready. Download or upload to Google Drive.</p>
           </div>
         </div>
+
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-          {editing ? (
-            <>
-              <button
-                onClick={openRegen}
-                disabled={regenOpen}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <SparklesIcon className="w-4 h-4" />
-                Regenerate Section
-              </button>
-              <button
-                onClick={cancelEdit}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveEdit}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Save Changes
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={enterEdit}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <PencilIcon className="w-4 h-4" />
-                Edit
-              </button>
-              <button
-                onClick={downloadMd}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <DownloadIcon className="w-4 h-4" />
-                Download as Markdown (.md)
-              </button>
-              <button
-                onClick={uploadToDrive}
-                disabled={driveLoading}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-emerald-700 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <CloudUploadIcon className="w-4 h-4" />
-                {driveLoading ? 'Uploading…' : 'Upload to Google Drive'}
-              </button>
-            </>
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <ArrowLeftIcon className="w-4 h-4" />
+              Back to Review
+            </button>
           )}
+          <button
+            onClick={downloadMd}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <DownloadIcon className="w-4 h-4" />
+            Download as Markdown (.md)
+          </button>
+          <button
+            onClick={uploadToDrive}
+            disabled={driveLoading}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-emerald-700 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <CloudUploadIcon className="w-4 h-4" />
+            {driveLoading ? 'Uploading…' : 'Upload to Google Drive'}
+          </button>
         </div>
       </div>
 
@@ -324,83 +241,11 @@ export default function CRDOutput({ crd, crdId, onRename }) {
         <p className="text-sm text-red-600">{driveError}</p>
       )}
 
-      {regenOpen && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <SparklesIcon className="w-4 h-4 text-indigo-600" />
-              <span className="text-sm font-semibold text-indigo-900">Regenerate Section</span>
-            </div>
-            <button
-              onClick={closeRegen}
-              className="p-1 text-indigo-400 hover:text-indigo-600 rounded transition-colors"
-              aria-label="Close"
-            >
-              <XIcon className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-indigo-800 mb-1">
-                Section name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={regenSection}
-                onChange={(e) => setRegenSection(e.target.value)}
-                placeholder="e.g. Normalized Requirements table"
-                className="w-full px-3 py-2 text-sm bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-gray-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-indigo-800 mb-1">
-                Additional instructions <span className="text-indigo-400 font-normal">(optional)</span>
-              </label>
-              <input
-                type="text"
-                value={regenInstruction}
-                onChange={(e) => setRegenInstruction(e.target.value)}
-                placeholder="e.g. Add a priority column"
-                className="w-full px-3 py-2 text-sm bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-gray-400"
-              />
-            </div>
-          </div>
-          {regenError && (
-            <p className="text-xs text-red-600">{regenError}</p>
-          )}
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={closeRegen}
-              className="px-3 py-1.5 text-sm font-medium text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleRegenerate}
-              disabled={regenerating || !regenSection.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <SparklesIcon className="w-3.5 h-3.5" />
-              {regenerating ? 'Regenerating…' : 'Regenerate'}
-            </button>
-          </div>
+      <div className="bg-white border border-gray-200 rounded-xl p-8 max-h-[70vh] overflow-y-auto">
+        <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-table:text-sm">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
-      )}
-
-      {editing ? (
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          className="w-full min-h-[70vh] max-h-[70vh] p-8 bg-white border border-gray-200 rounded-xl text-sm font-mono text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          spellCheck={false}
-        />
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl p-8 max-h-[70vh] overflow-y-auto">
-          <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-table:text-sm">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
