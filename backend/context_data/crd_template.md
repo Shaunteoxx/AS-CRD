@@ -123,43 +123,13 @@ AI Instructions:
 
 ---
 
-## 4. Impact & Priority Signals
-
-<!--
-AI Instructions:
-- Extract all priority and impact information from the source documents.
-- For Criticality, assess based on the urgency and tone of the client's language:
-  - High: the client is actively escalating, or the issue significantly impacts their core business operations
-  - Medium: the client has a workaround but is asking for improvement
-  - Low: the client mentioned it casually with no urgency
-- For Timeline, extract any specific dates or deadlines mentioned. If a range is given, use the earliest deadline.
-- For Estimated Deal Value, extract only the contracted deal value — not internal project costs. If only a project cost is available, note this explicitly and flag in Open Issues.
-- For Likelihood, assess based on signals in the documents e.g. signed LOI, confirmed interest, active negotiation.
-- Leave blank and flag in Open Issues if not found.
--->
-
-| Field | Value |
-|---|---|
-| **Criticality** | High / Medium / Low |
-| **Client's Required Timeline or Deadline** | YYYY-MM-DD / Not stated |
-| **Estimated Deal Value** | _(contracted deal value, not project cost)_ |
-| **Likelihood of Closing / Retaining** | High / Medium / Low |
-
-**Criticality Scale:**
-- **High** — significantly impacts the client's workflow or business. They are actively escalating
-- **Medium** — causes inconvenience but the client has a workaround. They are asking for it but not urgently
-- **Low** — nice to have. The client mentioned it but it is not affecting their day-to-day
-
----
-
-## 5. Supporting Evidence
+## 4. Supporting Evidence
 
 <!--
 AI Instructions:
 - Extract direct quotes that support or explain the problems and requirements identified above.
 - Preserve the exact original wording of every quote — do not paraphrase.
 - For each quote, identify the source document and include a timestamp, slide number, or page reference where available.
-- List every source document used to fill in this docs in the Linked Source Documents table.
 -->
 
 **Direct Quotes**
@@ -169,16 +139,9 @@ AI Instructions:
 | | | |
 | | | |
 
-**Linked Source Documents**
-
-| Document Name | Type | Link / Location |
-|---|---|---|
-| | Meeting Notes / Email / Transcript / Proposal / Presentation / Other | |
-| | | |
-
 ---
 
-## 6. Internal Notes
+## 5. Internal Notes
 
 <!--
 AI Instructions:
@@ -196,7 +159,7 @@ _(URL — added once the BRD is created)_
 
 ---
 
-## Open Issues & Questions
+## 6. Open Issues & Questions
 
 <!--
 AI Instructions:
@@ -215,3 +178,17 @@ AI Instructions:
 ---
 
 *This docs was auto-generated from unstructured source documents. All content should be reviewed and validated by the team before use.*
+
+---
+
+## Appendix — Source Documents
+
+<!--
+AI Instructions:
+- List every source document used to fill in this CRD.
+-->
+
+| Document Name | Type | Link / Location |
+|---|---|---|
+| | Meeting Notes / Email / Transcript / Proposal / Presentation / Other | |
+| | | |
