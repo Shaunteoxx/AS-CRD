@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { SparklesIcon, CheckCircleIcon } from './Icons'
+import { authFetch } from '../utils'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -38,7 +39,7 @@ export default function CRDReview({ crd, onConfirm }) {
     const state = getState(heading)
     updateState(heading, { regenerating: true, error: '' })
     try {
-      const res = await fetch(`${API}/regenerate`, {
+      const res = await authFetch(`${API}/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ crd: fullCrd, section: heading, instruction: state.instruction }),
