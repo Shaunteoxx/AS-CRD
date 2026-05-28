@@ -20,7 +20,7 @@ function parseSections(markdown) {
   }).filter(Boolean)
 }
 
-export default function CRDReview({ crd, onConfirm }) {
+export default function CRDReview({ crd, onConfirm, regenerateUrl = '/regenerate' }) {
   const [fullCrd, setFullCrd] = useState(crd)
   const [sectionStates, setSectionStates] = useState({})
 
@@ -39,7 +39,7 @@ export default function CRDReview({ crd, onConfirm }) {
     const state = getState(heading)
     updateState(heading, { regenerating: true, error: '' })
     try {
-      const res = await authFetch(`${API}/regenerate`, {
+      const res = await authFetch(`${API}${regenerateUrl}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ crd: fullCrd, section: heading, instruction: state.instruction }),

@@ -11,6 +11,7 @@ const GDOCS_TOKEN_KEY = 'google_oauth_token'
 const GDOCS_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 const GDOC_MIME = 'application/vnd.google-apps.document'
 const CRD_FOLDER_ID = '1MTojq7o5eU6ypCb7JrXhnpo4Q34X8UzF'
+const DEFAULT_LOG_ENDPOINT = '/log-to-sheet'
 
 function getStoredToken() {
   try {
@@ -29,12 +30,12 @@ function storeToken(tokenResponse) {
   }))
 }
 
-async function doUploadToDrive(token, mdContent, fileName) {
+async function doUploadToDrive(token, mdContent, fileName, folderId) {
   const html = `<!DOCTYPE html><html><body>${marked.parse(mdContent)}</body></html>`
   const htmlBlob = new Blob([html], { type: 'text/html' })
 
   const boundary = `drive_${Date.now()}`
-  const metadata = JSON.stringify({ name: fileName, parents: [CRD_FOLDER_ID], mimeType: GDOC_MIME })
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: GDOC_MIME })
   const preamble = [
     `--${boundary}`,
     'Content-Type: application/json; charset=UTF-8',
@@ -71,9 +72,10 @@ async function doUploadToDrive(token, mdContent, fileName) {
   return webViewLink
 }
 
-async function logUploadToSheet(filename, clientName, driveLink) {
+async function logUploadToSheet(filename, clientName, driveLink, logEndpoint) {
+  if (!logEndpoint) return
   try {
-    await authFetch(`${API}/log-to-sheet`, {
+    await authFetch(`${API}${logEndpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, client_name: clientName, drive_link: driveLink }),
@@ -83,7 +85,7 @@ async function logUploadToSheet(filename, clientName, driveLink) {
   }
 }
 
-export default function CRDOutput({ crd, crdId, onRename, onBack }) {
+export default function CRDOutput({ crd, crdId, onRename, onBack, folderId = CRD_FOLDER_ID, docLabel = 'CRD', logEndpoint = DEFAULT_LOG_ENDPOINT }) {
   const content = crd
 
   const [docId, setDocId] = useState(crdId || 'crd')
@@ -112,10 +114,11 @@ export default function CRDOutput({ crd, crdId, onRename, onBack }) {
           tokenResponse.access_token,
           pendingDriveContent.current,
           pendingDriveFileName.current,
+          folderId,
         )
         const uploadedFilename = pendingDriveFileName.current
         const uploadedClientName = extractClientName(pendingDriveContent.current)
-        await logUploadToSheet(uploadedFilename, uploadedClientName, webViewLink)
+        await logUploadToSheet(uploadedFilename, uploadedClientName, webViewLink, logEndpoint)
       } catch (e) {
         setDriveError(e.message)
       } finally {
@@ -140,8 +143,8 @@ export default function CRDOutput({ crd, crdId, onRename, onBack }) {
     const storedToken = getStoredToken()
     if (storedToken) {
       try {
-        const webViewLink = await doUploadToDrive(storedToken, content, fileName)
-        await logUploadToSheet(docId, extractClientName(content), webViewLink)
+        const webViewLink = await doUploadToDrive(storedToken, content, fileName, folderId)
+        await logUploadToSheet(docId, extractClientName(content), webViewLink, logEndpoint)
         setDriveLoading(false)
       } catch (e) {
         if (e.status === 401 || e.status === 403) {
@@ -177,7 +180,7 @@ export default function CRDOutput({ crd, crdId, onRename, onBack }) {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">Phase 4 — Export CRD</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Phase 4 — Export {docLabel}</h2>
           <div className="flex items-center gap-2">
             {idEditing ? (
               <input

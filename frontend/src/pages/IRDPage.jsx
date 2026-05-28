@@ -4,28 +4,21 @@ import UploadArea from '../components/UploadArea'
 import ChatDisplay from '../components/ChatDisplay'
 import CRDReview from '../components/CRDReview'
 import CRDOutput from '../components/CRDOutput'
-import CRDHistoryModal from '../components/CRDHistoryModal'
+import IRDHistoryModal from '../components/IRDHistoryModal'
 import { CheckCircleIcon, HistoryIcon, TrashIcon } from '../components/Icons'
-import { extractClientName, authFetch } from '../utils'
+import { authFetch } from '../utils'
 import { generateCodeVerifier, generateCodeChallenge, generateState } from '../pkce'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const HISTORY_KEY = 'crd_history'
+const HISTORY_KEY = 'ird_history'
 
 const CORRIDOR_BASE = import.meta.env.VITE_CORRIDOR_BASE_URL || 'https://www.corridor.cloud'
 const CORRIDOR_CLIENT_ID = import.meta.env.VITE_CORRIDOR_CLIENT_ID || ''
 const CORRIDOR_PROJECT_SLUG = import.meta.env.VITE_CORRIDOR_PROJECT_SLUG || 'crd-generator'
 const CORRIDOR_REDIRECT_URI = import.meta.env.VITE_CORRIDOR_REDIRECT_URI || `${window.location.origin}/auth/callback`
 
-const TAB_ROUTES = {
-  'Client Requirement': '/crd',
-  'Business Requirement': '/brd',
-  'Internal Requirement': '/ird',
-  'Product Requirement': '/prd',
-}
-
 async function redirectToCorridorAuth() {
-  sessionStorage.setItem('auth_redirect', '/crd')
+  sessionStorage.setItem('auth_redirect', '/ird')
   const verifier = generateCodeVerifier()
   const challenge = await generateCodeChallenge(verifier)
   const state = generateState()
@@ -44,11 +37,25 @@ async function redirectToCorridorAuth() {
   window.location.href = `${CORRIDOR_BASE}/oauth/authorize?${params}`
 }
 
+const TAB_ROUTES = {
+  'Client Requirement': '/crd',
+  'Business Requirement': '/brd',
+  'Internal Requirement': '/ird',
+  'Product Requirement': '/prd',
+}
+
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
 }
 
-export default function CRDPage() {
+function extractInternalName(md) {
+  const match = md.match(/\*\*Team\s*\/\s*Department\*\*[:\s]+([^\n*]+)/i)
+  if (match) return match[1].trim()
+  const heading = md.match(/^#\s+(.+)$/m)
+  return heading ? heading[1].trim() : 'Internal Requirement'
+}
+
+export default function IRDPage() {
   const navigate = useNavigate()
   const [authenticated, setAuthenticated] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
@@ -59,13 +66,13 @@ export default function CRDPage() {
   const [files, setFiles] = useState([])
   const [analysis, setAnalysis] = useState('')
   const [questions, setQuestions] = useState([])
-  const [crd, setCrd] = useState('')
-  const [crdId, setCrdId] = useState('')
+  const [ird, setIrd] = useState('')
+  const [irdId, setIrdId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [crdHistory, setCrdHistory] = useState(loadHistory)
-  const [crdHistoryModal, setCrdHistoryModal] = useState(null)
-  const [currentCrdHistId, setCurrentCrdHistId] = useState(null)
+  const [irdHistory, setIrdHistory] = useState(loadHistory)
+  const [historyModal, setHistoryModal] = useState(null)
+  const [currentHistoryId, setCurrentHistoryId] = useState(null)
 
   useEffect(() => {
     if (!CORRIDOR_CLIENT_ID) { setAuthenticated(true); setAuthLoading(false); return }
@@ -82,12 +89,12 @@ export default function CRDPage() {
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-zinc-50"><p className="text-sm text-gray-500">Signing in…</p></div>
 
+  const handleTabChange = (tab) => navigate(TAB_ROUTES[tab] || '/ird')
+
   const reset = () => {
     setPhase(1); setNotes(''); setFiles([]); setAnalysis(''); setQuestions([])
-    setCrd(''); setCrdId(''); setError('')
+    setIrd(''); setIrdId(''); setError('')
   }
-
-  const handleTabChange = (tab) => navigate(TAB_ROUTES[tab] || '/crd')
 
   const handleAnalyze = async () => {
     setLoading(true); setError('')
@@ -95,16 +102,15 @@ export default function CRDPage() {
       const formData = new FormData()
       formData.append('notes', notes)
       files.forEach(f => formData.append('files', f))
-      const res = await authFetch(`${API}/analyze`, { method: 'POST', body: formData })
+      const res = await authFetch(`${API}/ird/analyze`, { method: 'POST', body: formData })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       setAnalysis(data.analysis)
-      const combined = data.combined_notes || notes
-      setNotes(combined)
-      const res2 = await authFetch(`${API}/clarify`, {
+      setNotes(data.combined_notes || notes)
+      const res2 = await authFetch(`${API}/ird/clarify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: combined, analysis: data.analysis, answers: [] }),
+        body: JSON.stringify({ notes: data.combined_notes || notes, analysis: data.analysis, answers: [] }),
       })
       if (!res2.ok) throw new Error(await res2.text())
       const data2 = await res2.json()
@@ -117,38 +123,38 @@ export default function CRDPage() {
   const handleGenerate = async (answers) => {
     setLoading(true); setError('')
     try {
-      const res = await authFetch(`${API}/generate`, {
+      const res = await authFetch(`${API}/ird/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes, analysis, answers, filename: crdId }),
+        body: JSON.stringify({ notes, analysis, answers, filename: irdId }),
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
-      setCrd(data.crd); setCrdId(data.crd_id || 'crd'); setPhase(3)
+      setIrd(data.crd); setIrdId(data.crd_id || 'ird'); setPhase(3)
     } catch (e) { setError(`Generation failed: ${e.message}`) }
     finally { setLoading(false) }
   }
 
-  const handleConfirm = (finalCrd) => {
-    setCrd(finalCrd); setPhase(4)
+  const handleConfirm = (finalIrd) => {
+    setIrd(finalIrd); setPhase(4)
     const entry = {
-      id: crypto.randomUUID(), crdId,
-      clientName: extractClientName(finalCrd),
+      id: crypto.randomUUID(), irdId,
+      internalName: extractInternalName(finalIrd),
       dateGenerated: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
-      crd: finalCrd,
+      ird: finalIrd,
     }
-    const updated = [entry, ...crdHistory]
-    setCrdHistory(updated); localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); setCurrentCrdHistId(entry.id)
+    const updated = [entry, ...irdHistory]
+    setIrdHistory(updated); localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); setCurrentHistoryId(entry.id)
   }
 
   const handleRename = (newName) => {
-    const updated = crdHistory.map(e => e.id === currentCrdHistId ? { ...e, crdId: newName } : e)
-    setCrdHistory(updated); localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+    const updated = irdHistory.map(e => e.id === currentHistoryId ? { ...e, irdId: newName } : e)
+    setIrdHistory(updated); localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
   }
 
   const deleteEntry = (id) => {
-    const updated = crdHistory.filter(e => e.id !== id)
-    setCrdHistory(updated); localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
-    if (crdHistoryModal?.id === id) setCrdHistoryModal(null)
+    const updated = irdHistory.filter(e => e.id !== id)
+    setIrdHistory(updated); localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+    if (historyModal?.id === id) setHistoryModal(null)
   }
 
   return (
@@ -170,7 +176,7 @@ export default function CRDPage() {
                 const p = i + 1
                 return (
                   <div key={p} className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${phase === p ? 'bg-blue-600 text-white' : phase > p ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${phase === p ? 'bg-emerald-600 text-white' : phase > p ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
                       {phase > p ? <CheckCircleIcon className="w-3.5 h-3.5" /> : p}
                     </div>
                     <span className={`text-xs hidden sm:block ${phase === p ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>{label}</span>
@@ -190,7 +196,7 @@ export default function CRDPage() {
             {sidebarOpen && (
               <div className="flex items-center gap-2 min-w-0">
                 <HistoryIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Recent CRDs</span>
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Recent IRDs</span>
               </div>
             )}
             <button
@@ -205,15 +211,15 @@ export default function CRDPage() {
           </div>
           {sidebarOpen && (
             <div className="flex-1 overflow-y-auto">
-              {crdHistory.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-8 px-4 leading-relaxed">No documents yet.<br />Generated CRDs will appear here.</p>
+              {irdHistory.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-8 px-4 leading-relaxed">No documents yet.<br />Generated IRDs will appear here.</p>
               ) : (
                 <ul className="divide-y divide-gray-100">
-                  {crdHistory.map(entry => (
+                  {irdHistory.map(entry => (
                     <li key={entry.id} className="group relative">
-                      <button onClick={() => setCrdHistoryModal(entry)} className="w-full text-left px-4 py-3 pr-9 hover:bg-gray-50 transition-colors">
-                        <span className="block text-xs font-mono font-semibold text-blue-700 truncate">{entry.crdId}</span>
-                        <span className="block text-sm font-medium text-gray-800 truncate">{entry.clientName}</span>
+                      <button onClick={() => setHistoryModal(entry)} className="w-full text-left px-4 py-3 pr-9 hover:bg-gray-50 transition-colors">
+                        <span className="block text-xs font-mono font-semibold text-emerald-700 truncate">{entry.irdId}</span>
+                        <span className="block text-sm font-medium text-gray-800 truncate">{entry.internalName}</span>
                         <span className="block text-xs text-gray-400 mt-0.5">{entry.dateGenerated}</span>
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); deleteEntry(entry.id) }} className="absolute top-3 right-2 p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all rounded" aria-label="Delete">
@@ -239,18 +245,18 @@ export default function CRDPage() {
             {phase === 1 && (
               <div className="w-full max-w-3xl">
                 {error && <div className="mb-4 p-4 bg-red-900/40 border border-red-500/40 rounded-lg text-red-300 text-sm">{error}</div>}
-                <UploadArea notes={notes} setNotes={setNotes} files={files} setFiles={setFiles} onAnalyze={handleAnalyze} loading={loading} activeTab="Client Requirement" onTabChange={handleTabChange} />
+                <UploadArea notes={notes} setNotes={setNotes} files={files} setFiles={setFiles} onAnalyze={handleAnalyze} loading={loading} activeTab="Internal Requirement" onTabChange={handleTabChange} />
               </div>
             )}
             {phase > 1 && error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
             {phase === 2 && <ChatDisplay analysis={analysis} questions={questions} onGenerate={handleGenerate} loading={loading} />}
-            {phase === 3 && <CRDReview crd={crd} onConfirm={handleConfirm} />}
-            {phase === 4 && <CRDOutput crd={crd} crdId={crdId} onRename={handleRename} onBack={() => setPhase(3)} />}
+            {phase === 3 && <CRDReview crd={ird} onConfirm={handleConfirm} regenerateUrl="/ird/regenerate" />}
+            {phase === 4 && <CRDOutput crd={ird} crdId={irdId} onRename={handleRename} onBack={() => setPhase(3)} docLabel="IRD" logEndpoint={null} />}
           </div>
         </main>
       </div>
 
-      {crdHistoryModal && <CRDHistoryModal entry={crdHistoryModal} onClose={() => setCrdHistoryModal(null)} />}
+      {historyModal && <IRDHistoryModal entry={historyModal} onClose={() => setHistoryModal(null)} />}
     </div>
   )
 }

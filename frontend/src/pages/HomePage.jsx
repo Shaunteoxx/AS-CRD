@@ -7,7 +7,7 @@ const tools = [
     route: '/crd',
     label: 'CRD Generator',
     abbr: 'CRD',
-    description: 'Turn raw client notes and meeting documents into structured Client Request Documents',
+    description: 'Turn raw client notes and meeting documents into structured Client Request Documents.',
     cta: 'Open CRD Generator',
     accent: 'blue',
   },
@@ -15,9 +15,25 @@ const tools = [
     route: '/brd',
     label: 'BRD Generator',
     abbr: 'BRD',
-    description: 'Group client requirements into platform-level Business Requirements Documents',
+    description: 'Group client requirements into platform-level Business Requirements Documents.',
     cta: 'Open BRD Generator',
     accent: 'violet',
+  },
+  {
+    route: '/ird',
+    label: 'IRD Generator',
+    abbr: 'IRD',
+    description: 'Document internal operational needs, team requirements, and process constraints.',
+    cta: 'Open IRD Generator',
+    accent: 'emerald',
+  },
+  {
+    route: '/prd',
+    label: 'PRD Generator',
+    abbr: 'PRD',
+    description: 'Outline product features, user stories, and technical specifications.',
+    cta: 'Open PRD Generator',
+    accent: 'orange',
   },
 ]
 
@@ -33,6 +49,18 @@ const accentClasses = {
     hover: 'group-hover:border-violet-300',
     arrow: 'text-violet-400 group-hover:text-violet-600',
     cta: 'text-violet-600 group-hover:text-violet-700',
+  },
+  emerald: {
+    abbr: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    hover: 'group-hover:border-emerald-300',
+    arrow: 'text-emerald-400 group-hover:text-emerald-600',
+    cta: 'text-emerald-600 group-hover:text-emerald-700',
+  },
+  orange: {
+    abbr: 'bg-orange-50 text-orange-700 border-orange-100',
+    hover: 'group-hover:border-orange-300',
+    arrow: 'text-orange-400 group-hover:text-orange-600',
+    cta: 'text-orange-600 group-hover:text-orange-700',
   },
 }
 
@@ -68,7 +96,7 @@ export default function HomePage() {
               <button
                 key={tool.route}
                 onClick={() => navigate(tool.route)}
-                className={`group text-left bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm transition-all duration-150 hover:shadow-md ${ac.hover} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-${tool.accent}-400`}
+                className={`group text-left bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm transition-all duration-150 hover:shadow-md ${ac.hover} focus:outline-none`}
               >
                 <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded border mb-4 ${ac.abbr}`}>
                   {tool.abbr}

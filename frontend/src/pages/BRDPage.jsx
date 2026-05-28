@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import BRDUploadArea from '../components/brd/BRDUploadArea'
+import UploadArea from '../components/UploadArea'
 import BRDClarify from '../components/brd/BRDClarify'
 import BRDReview from '../components/brd/BRDReview'
 import BRDOutput from '../components/brd/BRDOutput'
@@ -338,10 +338,18 @@ function GapReport({ requirement, report, loading, error, onBack, onGenerateNew 
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
+const TAB_ROUTES = {
+  'Client Requirement': '/crd',
+  'Business Requirement': '/brd',
+  'Internal Requirement': '/ird',
+  'Product Requirement': '/prd',
+}
+
 export default function BRDPage() {
   const navigate = useNavigate()
   const [authenticated, setAuthenticated] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const [phase, setPhase] = useState(1)
   const [notes, setNotes] = useState('')
@@ -556,7 +564,7 @@ export default function BRDPage() {
     if (historyModalEntry?.id === id) setHistoryModalEntry(null)
   }
 
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const handleTabChange = (tab) => navigate(TAB_ROUTES[tab] || '/brd')
 
   const reset = () => {
     setPhase(1)
@@ -630,22 +638,11 @@ export default function BRDPage() {
                 )
               })}
             </div>
-            <div className="flex items-center gap-3">
-              {(phase > 1 || showMatchPhase) && (
-                <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-600 underline">
-                  Start over
-                </button>
-              )}
-              <button
-                onClick={() => navigate('/')}
-                className="text-xs text-zinc-400 hover:text-zinc-600 flex items-center gap-1"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                All tools
+            {(phase > 1 || showMatchPhase) && (
+              <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-600 underline">
+                Start over
               </button>
-            </div>
+            )}
           </div>
         </div>
       </header>
@@ -702,16 +699,23 @@ export default function BRDPage() {
           )}
         </aside>
 
-        <main className="flex-1 overflow-y-auto px-6 py-8">
-          <div className="max-w-3xl mx-auto">
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {error}
+        <main
+          className="flex-1 overflow-y-auto"
+          style={phase === 1 && !showMatchPhase ? {
+            backgroundColor: '#f8f9fb',
+            backgroundImage: 'linear-gradient(rgba(0,0,0,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.055) 1px, transparent 1px)',
+            backgroundSize: '44px 44px',
+          } : {}}
+        >
+          <div className={phase === 1 && !showMatchPhase ? 'flex flex-col items-center justify-center min-h-full py-12 px-6' : 'max-w-3xl mx-auto px-6 py-8'}>
+            {phase === 1 && !showMatchPhase && (
+              <div className="w-full max-w-3xl">
+                {error && <div className="mb-4 p-4 bg-red-900/40 border border-red-500/40 rounded-lg text-red-300 text-sm">{error}</div>}
+                <UploadArea notes={notes} setNotes={setNotes} files={files} setFiles={setFiles} onAnalyze={handleAnalyze} loading={loading} activeTab="Business Requirement" onTabChange={handleTabChange} />
               </div>
             )}
-
-            {phase === 1 && !showMatchPhase && (
-              <BRDUploadArea notes={notes} setNotes={setNotes} files={files} setFiles={setFiles} onAnalyze={handleAnalyze} loading={loading} />
+            {(phase > 1 || showMatchPhase) && error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
             )}
 
             {phase === 1 && showMatchPhase && !activeGapReq && (

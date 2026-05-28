@@ -498,6 +498,368 @@ async def log_to_sheet(req: LogToSheetRequest, _: dict = Depends(require_auth)):
     return {"status": "ok"}
 
 
+# ── IRD helpers ───────────────────────────────────────────────────────────────
+
+IRD_CONTEXT_DIR = Path(__file__).parent / "ird_context_data"
+
+
+def load_ird_context() -> str:
+    parts = []
+    for f in sorted(IRD_CONTEXT_DIR.glob("*")):
+        if f.is_file() and f.suffix in {".txt", ".md"}:
+            parts.append(f"### {f.name}\n{f.read_text()}")
+    return "\n\n".join(parts) if parts else "No IRD context loaded."
+
+
+def get_ird_model(context: str) -> genai.GenerativeModel:
+    system = f"""You are an IRD (Internal Requirement Document) generator assistant for Allocate Space. You help teams document internal operational requirements by analyzing source documents, asking targeted clarifying questions, and producing formatted IRD documents.
+
+Always follow the corporate context and templates below when generating documents.
+
+--- CORPORATE CONTEXT ---
+{context}
+--- END CORPORATE CONTEXT ---"""
+    return genai.GenerativeModel(model_name=MODEL_NAME, system_instruction=system)
+
+
+def _name_to_ird_id(name: str, version: int = 1) -> str:
+    words = [w for w in name.split() if w]
+    if len(words) >= 2:
+        initials = words[0][0].upper() + words[1][0].upper()
+    elif len(words) == 1 and len(words[0]) >= 2:
+        initials = words[0][:2].upper()
+    elif len(words) == 1:
+        initials = (words[0][0] * 2).upper()
+    else:
+        return f"I-XX-{version}"
+    return f"I-{initials}-{version}"
+
+
+def extract_ird_id(text: str, version: int = 1) -> str:
+    patterns = [
+        r'(?:Team|Department|Group|Division)(?:\s+Name)?\s*[:\-]\s*([^\n,\.]{2,80})',
+        r'(?:Requestor|Raised By|Submitted By)\s*[:\-]\s*([^\n,\.]{2,80})',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            name = m.group(1).strip().rstrip('.,')
+            if name:
+                return _name_to_ird_id(name, version)
+    return f"I-XX-{version}"
+
+
+class IrdRegenerateRequest(BaseModel):
+    crd: str
+    section: str = ""
+    instruction: str = ""
+
+
+@app.post("/ird/analyze")
+async def ird_analyze(
+    notes: str = Form(default=""),
+    files: list[UploadFile] = File(default=[]),
+    _: dict = Depends(require_auth),
+):
+    file_parts = []
+    for file in files:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            continue
+        text = extract_text(ext, await file.read())
+        if text.strip():
+            file_parts.append(f"--- {file.filename} ---\n{text}")
+
+    combined = "\n\n".join(filter(None, [notes.strip()] + file_parts))
+    if not combined.strip():
+        raise HTTPException(status_code=400, detail="No content provided")
+
+    model = get_ird_model(load_ird_context())
+    response = model.generate_content(
+        f"""Analyze these internal documents and extract:
+1. Key internal requirements
+2. Teams or stakeholders mentioned
+3. Scope and operational needs
+4. Any ambiguities or missing information
+
+Source Documents:
+{combined}"""
+    )
+    return {"analysis": response.text, "combined_notes": combined}
+
+
+@app.post("/ird/clarify")
+async def ird_clarify(req: ClarifyRequest, _: dict = Depends(require_auth)):
+    model = get_ird_model(load_ird_context())
+    answers_text = ""
+    if req.answers:
+        answers_text = "\n\nPrevious Q&A:\n" + "\n".join(
+            f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
+        )
+
+    response = model.generate_content(
+        f"""Based on the internal documents and analysis below, generate 3–5 targeted clarifying questions needed to complete an IRD. Only ask what is truly necessary.
+
+Source Documents:
+{req.notes}
+
+Analysis:
+{req.analysis}{answers_text}
+
+Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
+    )
+
+    text = response.text.strip()
+    if "```" in text:
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    try:
+        questions = json.loads(text)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+
+    return {"questions": questions}
+
+
+@app.post("/ird/generate")
+async def ird_generate(req: GenerateRequest, _: dict = Depends(require_auth)):
+    model = get_ird_model(load_ird_context())
+    answers_text = "\n".join(
+        f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
+    )
+
+    filename = req.filename.strip()
+    if not filename:
+        filename = extract_ird_id(req.notes + "\n" + req.analysis)
+
+    filename_instruction = (
+        f"\n\nThe Docs ID for this document is: {filename}. "
+        "Use this exact value in the Docs ID field of the Document Control section. "
+        "Do not generate a new ID."
+    )
+
+    response = model.generate_content(
+        f"""Generate a complete, professionally formatted IRD document following the corporate template in your context.
+
+Source Documents:
+{req.notes}
+
+Analysis:
+{req.analysis}
+
+Clarifying Q&A:
+{answers_text}
+
+Produce the full IRD in Markdown format.{filename_instruction}"""
+    )
+
+    ird = response.text
+    return {"crd": ird, "crd_id": filename}
+
+
+@app.post("/ird/regenerate")
+async def ird_regenerate(req: IrdRegenerateRequest, _: dict = Depends(require_auth)):
+    if not req.section.strip():
+        raise HTTPException(status_code=400, detail="section is required")
+    model = get_ird_model(load_ird_context())
+    instruction_line = f"\nAdditional instructions: {req.instruction.strip()}" if req.instruction.strip() else ""
+    response = model.generate_content(
+        f"""You are given a complete IRD document in Markdown format. Rewrite ONLY the section named below. Do not alter any other section, heading, or content.
+
+Section to regenerate: {req.section.strip()}{instruction_line}
+
+Full IRD:
+{req.crd}
+
+Return ONLY the complete updated Markdown document with that section rewritten. No preamble, no explanation."""
+    )
+    return {"crd": response.text}
+
+
+# ── PRD helpers ───────────────────────────────────────────────────────────────
+
+PRD_CONTEXT_DIR = Path(__file__).parent / "prd_context_data"
+
+
+def load_prd_context() -> str:
+    parts = []
+    for f in sorted(PRD_CONTEXT_DIR.glob("*")):
+        if f.is_file() and f.suffix in {".txt", ".md"}:
+            parts.append(f"### {f.name}\n{f.read_text()}")
+    return "\n\n".join(parts) if parts else "No PRD context loaded."
+
+
+def get_prd_model(context: str) -> genai.GenerativeModel:
+    system = f"""You are a PRD (Product Requirement Document) generator assistant for Allocate Space. You help product managers create professional PRDs by analyzing source documents, asking targeted clarifying questions, and producing formatted PRD documents.
+
+Always follow the corporate context and templates below when generating documents.
+
+--- CORPORATE CONTEXT ---
+{context}
+--- END CORPORATE CONTEXT ---"""
+    return genai.GenerativeModel(model_name=MODEL_NAME, system_instruction=system)
+
+
+def _name_to_prd_id(name: str, version: int = 1) -> str:
+    words = [w for w in name.split() if w]
+    if len(words) >= 2:
+        initials = words[0][0].upper() + words[1][0].upper()
+    elif len(words) == 1 and len(words[0]) >= 2:
+        initials = words[0][:2].upper()
+    elif len(words) == 1:
+        initials = (words[0][0] * 2).upper()
+    else:
+        return f"P-XX-{version}"
+    return f"P-{initials}-{version}"
+
+
+def extract_prd_id(text: str, version: int = 1) -> str:
+    patterns = [
+        r'(?:Product|Feature|Initiative)(?:\s+Name)?\s*[:\-]\s*([^\n,\.]{2,80})',
+        r'(?:Owner|PM|Product Manager)\s*[:\-]\s*([^\n,\.]{2,80})',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            name = m.group(1).strip().rstrip('.,')
+            if name:
+                return _name_to_prd_id(name, version)
+    return f"P-XX-{version}"
+
+
+class PrdRegenerateRequest(BaseModel):
+    crd: str
+    section: str = ""
+    instruction: str = ""
+
+
+@app.post("/prd/analyze")
+async def prd_analyze(
+    notes: str = Form(default=""),
+    files: list[UploadFile] = File(default=[]),
+    _: dict = Depends(require_auth),
+):
+    file_parts = []
+    for file in files:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            continue
+        text = extract_text(ext, await file.read())
+        if text.strip():
+            file_parts.append(f"--- {file.filename} ---\n{text}")
+
+    combined = "\n\n".join(filter(None, [notes.strip()] + file_parts))
+    if not combined.strip():
+        raise HTTPException(status_code=400, detail="No content provided")
+
+    model = get_prd_model(load_prd_context())
+    response = model.generate_content(
+        f"""Analyze these product documents and extract:
+1. Key product requirements and user needs
+2. Target user personas mentioned
+3. Scope and feature boundaries
+4. Any ambiguities or missing information
+
+Source Documents:
+{combined}"""
+    )
+    return {"analysis": response.text, "combined_notes": combined}
+
+
+@app.post("/prd/clarify")
+async def prd_clarify(req: ClarifyRequest, _: dict = Depends(require_auth)):
+    model = get_prd_model(load_prd_context())
+    answers_text = ""
+    if req.answers:
+        answers_text = "\n\nPrevious Q&A:\n" + "\n".join(
+            f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
+        )
+
+    response = model.generate_content(
+        f"""Based on the source documents and analysis below, generate 3–5 targeted clarifying questions needed to complete a PRD. Only ask what is truly necessary.
+
+Source Documents:
+{req.notes}
+
+Analysis:
+{req.analysis}{answers_text}
+
+Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
+    )
+
+    text = response.text.strip()
+    if "```" in text:
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    try:
+        questions = json.loads(text)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+
+    return {"questions": questions}
+
+
+@app.post("/prd/generate")
+async def prd_generate(req: GenerateRequest, _: dict = Depends(require_auth)):
+    model = get_prd_model(load_prd_context())
+    answers_text = "\n".join(
+        f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
+    )
+
+    filename = req.filename.strip()
+    if not filename:
+        filename = extract_prd_id(req.notes + "\n" + req.analysis)
+
+    filename_instruction = (
+        f"\n\nThe Docs ID for this document is: {filename}. "
+        "Use this exact value in the Docs ID field of the Document Control section. "
+        "Do not generate a new ID."
+    )
+
+    response = model.generate_content(
+        f"""Generate a complete, professionally formatted PRD document following the corporate template in your context.
+
+Source Documents:
+{req.notes}
+
+Analysis:
+{req.analysis}
+
+Clarifying Q&A:
+{answers_text}
+
+Produce the full PRD in Markdown format.{filename_instruction}"""
+    )
+
+    prd = response.text
+    return {"crd": prd, "crd_id": filename}
+
+
+@app.post("/prd/regenerate")
+async def prd_regenerate(req: PrdRegenerateRequest, _: dict = Depends(require_auth)):
+    if not req.section.strip():
+        raise HTTPException(status_code=400, detail="section is required")
+    model = get_prd_model(load_prd_context())
+    instruction_line = f"\nAdditional instructions: {req.instruction.strip()}" if req.instruction.strip() else ""
+    response = model.generate_content(
+        f"""You are given a complete PRD document in Markdown format. Rewrite ONLY the section named below. Do not alter any other section, heading, or content.
+
+Section to regenerate: {req.section.strip()}{instruction_line}
+
+Full PRD:
+{req.crd}
+
+Return ONLY the complete updated Markdown document with that section rewritten. No preamble, no explanation."""
+    )
+    return {"crd": response.text}
+
+
 # ── BRD helpers ───────────────────────────────────────────────────────────────
 
 BRD_CONTEXT_DIR = Path(__file__).parent / "brd_context_data"
