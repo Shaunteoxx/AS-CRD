@@ -15,17 +15,17 @@ my-crd-microapp/
 ├── frontend/          # React app
 └── backend/
     ├── main.py        # FastAPI app entry point
-    ├── context_data/  # Corporate context files injected into system prompt
+    ├── crd_context_data/  # Corporate context files injected into system prompt
     └── ...
 ```
 
 ## Backend
 
 ### Context Injection
-- On startup (or per request), the backend reads all files from `backend/context_data/`
+- On startup (or per request), the backend reads all files from `backend/crd_context_data/`
 - File contents are concatenated and injected into the Anthropic API system prompt
 - This gives the model corporate-specific knowledge (terminology, templates, policies, etc.)
-- Add `.txt`, `.md`, or similar plain-text files to `context_data/` to expand context
+- Add `.txt`, `.md`, or similar plain-text files to `crd_context_data/` to expand context
 
 ### API
 - Built with FastAPI
@@ -66,7 +66,7 @@ The CRD generation follows a strict three-phase conversation flow:
 
 ### Phase 3 — Generate CRD
 - Backend combines original notes + answers + corporate context to produce the final CRD
-- Output is a formatted document following corporate CRD standards (defined in `context_data/`)
+- Output is a formatted document following corporate CRD standards (defined in `crd_context_data/`)
 - Frontend renders the CRD and allows copy/export
 
 ## Environment Variables
@@ -77,5 +77,5 @@ ANTHROPIC_API_KEY=your_key_here
 
 ## Key Conventions
 - Never hardcode API keys; always use environment variables
-- Keep `context_data/` files focused and up to date — they directly shape output quality
+- Keep `crd_context_data/` files focused and up to date — they directly shape output quality
 - Maintain phase state on the frontend; the backend is stateless between requests

@@ -1,5 +1,5 @@
 # CRD Generator API
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Cookie, Depends, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Cookie, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
@@ -38,7 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CONTEXT_DIR = Path(__file__).parent / "context_data"
+CONTEXT_DIR = Path(__file__).parent / "crd_context_data"
 CREDENTIALS_PATH = Path(__file__).parent / os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
 SHEET_ID = "1JOsrTwUMpJ9cKKXgAAdSZRd_mJquhajAAvnIsk6B__I"
 SHEET_WORKSHEET = "Feature"
@@ -494,5 +494,482 @@ async def log_to_sheet(req: LogToSheetRequest, _: dict = Depends(require_auth)):
         )
     except Exception as exc:
         logger.warning("CR sheet write failed in /log-to-sheet (%s)", exc)
+        return {"status": "warning", "message": str(exc)}
+    return {"status": "ok"}
+
+
+# ── BRD helpers ───────────────────────────────────────────────────────────────
+
+BRD_CONTEXT_DIR = Path(__file__).parent / "brd_context_data"
+
+
+def load_brd_context() -> str:
+    parts = []
+    for f in sorted(BRD_CONTEXT_DIR.glob("*")):
+        if f.is_file() and f.suffix in {".txt", ".md"}:
+            parts.append(f"### {f.name}\n{f.read_text()}")
+    return "\n\n".join(parts) if parts else "No BRD context loaded."
+
+
+def get_brd_model(context: str) -> genai.GenerativeModel:
+    system = f"""You are a BRD (Business Requirements Document) generator assistant for Allocate Space. You help analysts create professional BRDs by analyzing source CRD documents, asking targeted clarifying questions, and producing formatted BRD documents.
+
+Always follow the corporate context and templates below when generating documents.
+
+--- CORPORATE CONTEXT ---
+{context}
+--- END CORPORATE CONTEXT ---"""
+    return genai.GenerativeModel(model_name=MODEL_NAME, system_instruction=system)
+
+
+def extract_brd_title(md: str) -> str:
+    match = re.search(r'^#\s+(.+)$', md, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return "Business Requirement"
+
+
+def generate_brd_filename(md: str) -> str:
+    title = extract_brd_title(md)
+    today = datetime.date.today()
+    date_str = today.strftime("%b") + str(today.day)
+    return f"{title} - {date_str} - BRD"
+
+
+def generate_br_initials(title: str) -> str:
+    clean = re.sub(r'[^a-zA-Z0-9\s]', ' ', title)
+    words = [w for w in clean.split() if w.isalpha()]
+    return ''.join(w[0].upper() for w in words) or "BR"
+
+
+def extract_brd_objective(md: str) -> str:
+    match = re.search(
+        r'\*\*Key Solution Objective\*\*\s*[:\-]?\s*[\*_]?([^\n\*_]+)[\*_]?',
+        md, re.IGNORECASE,
+    )
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def extract_brd_crds(md: str) -> str:
+    section = re.search(
+        r'##\s*Existing Reference Material\s*\n(.*?)(?=\n##|\Z)',
+        md, re.DOTALL | re.IGNORECASE,
+    )
+    if not section:
+        return ""
+    crd_ids = re.findall(r'\bC-[A-Z]+-\d+\b', section.group(1))
+    return ", ".join(dict.fromkeys(crd_ids))
+
+
+# ── BRD request models ────────────────────────────────────────────────────────
+
+class BrdRegenerateRequest(BaseModel):
+    brd: str
+    section: str = ""
+    instruction: str = ""
+
+
+class BrdLogToSheetRequest(BaseModel):
+    brd: str
+    drive_link: str = ""
+
+
+# ── BRD Drive folder ──────────────────────────────────────────────────────────
+
+BRD_DRIVE_FOLDER_ID = "1F2_IRbCAwltGPI1i4UaSgpGDtjVxWsfx"
+
+
+async def fetch_brd_texts_from_drive() -> list[dict]:
+    """Return [{name, id, link, text}] for every BRD in the Drive folder."""
+    try:
+        from google.oauth2.service_account import Credentials
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+
+        scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+        creds = Credentials.from_service_account_file(str(CREDENTIALS_PATH), scopes=scopes)
+        creds.refresh(GoogleAuthRequest())
+        token = creds.token
+    except Exception as exc:
+        logger.warning("Drive token fetch failed: %s", exc)
+        return []
+
+    results = []
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers={"Authorization": f"Bearer {token}"},
+                params={
+                    "q": f"'{BRD_DRIVE_FOLDER_ID}' in parents and trashed=false",
+                    "fields": "files(id,name,webViewLink,mimeType)",
+                    "pageSize": 100,
+                },
+            )
+            if not r.is_success:
+                logger.warning("Drive file list failed: %s", r.text)
+                return []
+
+            for f in r.json().get("files", []):
+                file_id = f["id"]
+                mime = f.get("mimeType", "")
+                name = f.get("name", "")
+                link = f.get("webViewLink", f"https://drive.google.com/file/d/{file_id}/view")
+                try:
+                    if "google-apps.document" in mime:
+                        er = await client.get(
+                            f"https://www.googleapis.com/drive/v3/files/{file_id}/export",
+                            headers={"Authorization": f"Bearer {token}"},
+                            params={"mimeType": "text/plain"},
+                            timeout=15,
+                        )
+                        text = er.text if er.is_success else ""
+                    else:
+                        dr = await client.get(
+                            f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+                            headers={"Authorization": f"Bearer {token}"},
+                            timeout=15,
+                        )
+                        text = extract_text(Path(name).suffix.lower(), dr.content) if dr.is_success else ""
+
+                    if text.strip():
+                        results.append({"name": name, "id": file_id, "link": link, "text": text[:10000]})
+                except Exception as exc:
+                    logger.warning("Failed to fetch BRD '%s': %s", name, exc)
+    except Exception as exc:
+        logger.warning("Drive folder fetch error: %s", exc)
+
+    return results
+
+
+# ── BRD endpoints ─────────────────────────────────────────────────────────────
+
+@app.post("/brd/analyze")
+async def brd_analyze(
+    notes: str = Form(default=""),
+    files: list[UploadFile] = File(default=[]),
+    _: dict = Depends(require_auth),
+):
+    file_parts = []
+    for file in files:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            continue
+        text = extract_text(ext, await file.read())
+        if text.strip():
+            file_parts.append(f"--- {file.filename} ---\n{text}")
+
+    combined = "\n\n".join(filter(None, [notes.strip()] + file_parts))
+    if not combined.strip():
+        raise HTTPException(status_code=400, detail="No content provided")
+
+    existing_brds = await fetch_brd_texts_from_drive()
+    brd_blocks = (
+        "\n\n".join(
+            f"=== {b['name']} ===\nDrive link: {b['link']}\n\n{b['text']}"
+            for b in existing_brds
+        )
+        if existing_brds
+        else "No existing BRDs found."
+    )
+
+    model = get_brd_model(load_brd_context())
+    response = model.generate_content(
+        f"""Analyze the uploaded CRD documents and compare each distinct client requirement against the existing BRDs listed below.
+
+EXTRACTION RULES — follow these exactly:
+- Extract requirements only from the Business Requirements section of the CRD. This is the section containing numbered items labelled BR-01, BR-02, BR-03, etc.
+- Do not extract requirements from the Underlying Problems, Desired Outcome, Trigger Event, Request Summary, or any other section.
+- Each numbered BR item in the Business Requirements section is exactly one requirement. Extract precisely those items — no more, no fewer.
+- The requirement name must come from the Business Name field of each BR item, not from the description, problem statement, or any other field.
+- Capture the BR number (e.g. BR-01, BR-02) for each item as the br_id field. If no BR number can be identified, set br_id to null.
+- Do not group, summarise, combine, or infer — extract faithfully from what is written in the Business Requirements section.
+- If the CRD does not have a clearly labelled Business Requirements section with numbered BR items, only then fall back to inferring requirements from the document as a whole.
+
+For each extracted requirement, determine one of three match states:
+- matched: an existing BRD substantially and comprehensively covers the requirement. Be conservative — only use this if coverage is truly comprehensive.
+- partial: an existing BRD covers some aspects but there are clear gaps or new aspects not captured.
+- unmatched: no existing BRD covers this requirement at all.
+
+For partial matches, the coverage_note must explain what is already covered AND what is missing or new.
+
+Return ONLY a valid JSON object — no preamble, no explanation, no markdown fences:
+{{
+  "requirements": [
+    {{
+      "name": "Short requirement name",
+      "description": "One sentence describing this requirement from the CRD.",
+      "crd_source": "C-XX-01",
+      "br_id": "BR-01",
+      "status": "matched",
+      "matched_brd": "Exact BRD document name",
+      "matched_brd_link": "https://drive.google.com/...",
+      "coverage_note": null
+    }},
+    {{
+      "name": "Another requirement",
+      "description": "One sentence.",
+      "crd_source": "C-XX-01",
+      "br_id": "BR-02",
+      "status": "partial",
+      "matched_brd": "Exact BRD document name",
+      "matched_brd_link": "https://drive.google.com/...",
+      "coverage_note": "Existing BRD covers X but does not capture Y."
+    }},
+    {{
+      "name": "New requirement",
+      "description": "One sentence.",
+      "crd_source": "C-XX-01",
+      "br_id": "BR-03",
+      "status": "unmatched",
+      "matched_brd": null,
+      "matched_brd_link": null,
+      "coverage_note": null
+    }}
+  ]
+}}
+
+UPLOADED CRDs:
+{combined}
+
+EXISTING BRDs:
+{brd_blocks}"""
+    )
+
+    raw = response.text.strip()
+    if "```" in raw:
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    raw = raw.rstrip("`").strip()
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        logger.error("Match JSON parse error: %s | raw: %s", exc, raw[:300])
+        raise HTTPException(status_code=500, detail="Failed to parse match results from model")
+
+    return {"requirements": data.get("requirements", []), "combined_notes": combined}
+
+
+class AnalyzeGapRequest(BaseModel):
+    matched_brd_link: str
+    requirement_name: str
+    requirement_description: str
+    crd_source: str
+    coverage_note: str = ""
+
+
+@app.post("/brd/analyze-gap")
+async def brd_analyze_gap(req: AnalyzeGapRequest, _: dict = Depends(require_auth)):
+    m = re.search(r'/d/([a-zA-Z0-9_-]+)', req.matched_brd_link)
+    if not m:
+        # Fall back: try query param id=
+        m = re.search(r'[?&]id=([a-zA-Z0-9_-]+)', req.matched_brd_link)
+    if not m:
+        raise HTTPException(status_code=400, detail="Cannot parse file ID from Drive link")
+    file_id = m.group(1)
+
+    try:
+        from google.oauth2.service_account import Credentials
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+
+        scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+        creds = Credentials.from_service_account_file(str(CREDENTIALS_PATH), scopes=scopes)
+        creds.refresh(GoogleAuthRequest())
+        token = creds.token
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Drive auth failed: {exc}")
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        er = await client.get(
+            f"https://www.googleapis.com/drive/v3/files/{file_id}/export",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"mimeType": "text/plain"},
+        )
+        if er.is_success:
+            existing_brd_text = er.text
+        else:
+            dr = await client.get(
+                f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            existing_brd_text = dr.text if dr.is_success else ""
+
+    if not existing_brd_text.strip():
+        raise HTTPException(status_code=500, detail="Could not retrieve existing BRD content from Drive")
+
+    model = get_brd_model(load_brd_context())
+    response = model.generate_content(
+        f"""Analyze the gap between an existing BRD and a new client requirement. Identify exactly what needs to change in the existing BRD to cover this new requirement.
+
+New Requirement: {req.requirement_name}
+Description: {req.requirement_description}
+Source CRD: {req.crd_source}
+Known gap: {req.coverage_note}
+
+Existing BRD:
+{existing_brd_text[:6000]}
+
+Return ONLY a valid JSON object — no preamble, no explanation, no markdown fences:
+{{
+  "summary": "One sentence describing the overall gap",
+  "sections": [
+    {{
+      "section": "Exact section name from the BRD",
+      "change_type": "add",
+      "reason": "Why this section needs to change",
+      "draft": "The exact new content to add — ready to paste into the document"
+    }}
+  ]
+}}"""
+    )
+
+    raw = response.text.strip()
+    if "```" in raw:
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    raw = raw.rstrip("`").strip()
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        logger.error("Gap JSON parse error: %s | raw: %s", exc, raw[:300])
+        raise HTTPException(status_code=500, detail="Failed to parse gap report from model")
+
+    return data
+
+
+@app.post("/brd/clarify")
+async def brd_clarify(req: ClarifyRequest, _: dict = Depends(require_auth)):
+    model = get_brd_model(load_brd_context())
+    answers_text = ""
+    if req.answers:
+        answers_text = "\n\nPrevious Q&A:\n" + "\n".join(
+            f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
+        )
+
+    response = model.generate_content(
+        f"""Based on the source documents and analysis below, generate 3–5 targeted clarifying questions needed to define the scope and structure of the BRD.
+
+Focus questions on:
+- Scope boundaries (what is explicitly in or out of scope for this BRD)
+- Dependencies between requirements across different CRDs or systems
+- Ambiguities or contradictions in the source documents
+- Priority or sequencing where requirements conflict or overlap
+
+Source Documents:
+{req.notes}
+
+Analysis:
+{req.analysis}{answers_text}
+
+Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
+    )
+
+    text = response.text.strip()
+    if "```" in text:
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    try:
+        questions = json.loads(text)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+
+    return {"questions": questions}
+
+
+@app.post("/brd/generate")
+async def brd_generate(req: GenerateRequest, _: dict = Depends(require_auth)):
+    model = get_brd_model(load_brd_context())
+    answers_text = "\n".join(
+        f"Q: {a['question']}\nA: {a['answer']}" for a in req.answers
+    )
+
+    today = datetime.date.today().isoformat()
+
+    response = model.generate_content(
+        f"""Generate a complete, professionally formatted BRD document following the BRD template in your context.
+
+Source Documents:
+{req.notes}
+
+Analysis:
+{req.analysis}
+
+Clarifying Q&A:
+{answers_text}
+
+Use today's date ({today}) for First Created.
+Produce the full BRD in Markdown format."""
+    )
+
+    brd = response.text
+    brd_id = generate_brd_filename(brd)
+    return {"brd": brd, "brd_id": brd_id}
+
+
+@app.post("/brd/regenerate")
+async def brd_regenerate(req: BrdRegenerateRequest, _: dict = Depends(require_auth)):
+    if not req.section.strip():
+        raise HTTPException(status_code=400, detail="section is required")
+    model = get_brd_model(load_brd_context())
+    instruction_line = f"\nAdditional instructions: {req.instruction.strip()}" if req.instruction.strip() else ""
+    response = model.generate_content(
+        f"""You are given a complete BRD document in Markdown format. Rewrite ONLY the section named below. Do not alter any other section, heading, or content.
+
+Section to regenerate: {req.section.strip()}{instruction_line}
+
+Full BRD:
+{req.brd}
+
+Return ONLY the complete updated Markdown document with that section rewritten. No preamble, no explanation."""
+    )
+    return {"brd": response.text}
+
+
+@app.post("/brd/log-to-sheet")
+async def brd_log_to_sheet(req: BrdLogToSheetRequest, _: dict = Depends(require_auth)):
+    date_str = datetime.date.today().strftime("%-d %b %y")
+    title = extract_brd_title(req.brd)
+    objective = extract_brd_objective(req.brd)
+    crds = extract_brd_crds(req.brd)
+    initials = generate_br_initials(title)
+
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_file(str(CREDENTIALS_PATH), scopes=scopes)
+        gc = gspread.authorize(creds)
+        ws = gc.open_by_key(SHEET_ID).worksheet("BR")
+
+        existing_ids = ws.col_values(1)
+        prefix = f"{initials}-"
+        nums = []
+        for id_val in existing_ids:
+            s = str(id_val)
+            if s.startswith(prefix):
+                try:
+                    nums.append(int(s[len(prefix):]))
+                except ValueError:
+                    pass
+        br_id = f"{initials}-{max(nums, default=0) + 1}"
+
+        ws.append_row(
+            [br_id, title, objective, crds, date_str, req.drive_link],
+            value_input_option="RAW",
+            insert_data_option="INSERT_ROWS",
+        )
+    except Exception as exc:
+        logger.warning("BR sheet write failed in /brd/log-to-sheet (%s)", exc)
         return {"status": "warning", "message": str(exc)}
     return {"status": "ok"}

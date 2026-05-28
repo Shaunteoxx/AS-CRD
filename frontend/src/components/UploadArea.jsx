@@ -1,8 +1,44 @@
+import { useRef } from 'react'
 import { SparklesIcon } from './Icons'
 
 const ACCEPTED_EXTS = new Set(['.txt', '.md', '.docx', '.pdf', '.pptx'])
 
-export default function UploadArea({ notes, setNotes, files, setFiles, onAnalyze, loading }) {
+const TABS = [
+  'Internal Requirement',
+  'Client Requirement',
+  'Business Requirement',
+  'Product Requirement',
+]
+
+const PLACEHOLDERS = {
+  'Internal Requirement': 'Describe internal team requirements, operational needs, or process constraints…',
+  'Client Requirement': 'Paste client notes, meeting transcripts, or client-facing requests…',
+  'Business Requirement': 'Outline business objectives, stakeholder needs, or strategic requirements…',
+  'Product Requirement': 'Detail product features, user stories, or technical specifications…',
+}
+
+const TAB_META = {
+  'Client Requirement': {
+    title: 'CRD Generator',
+    subtitle: 'Putting all the client requests into a structured document.',
+  },
+  'Business Requirement': {
+    title: 'BRD Generator',
+    subtitle: 'Grouping client and internal requirements into platform-level business documents.',
+  },
+  'Internal Requirement': {
+    title: 'IRD Generator',
+    subtitle: 'Documenting internal operational needs and process constraints.',
+  },
+  'Product Requirement': {
+    title: 'PRD Generator',
+    subtitle: 'Outlining product features, user stories, and technical specifications.',
+  },
+}
+
+export default function UploadArea({ notes, setNotes, files, setFiles, onAnalyze, loading, activeTab, onTabChange }) {
+  const fileInputRef = useRef(null)
+
   const addFiles = (incoming) => {
     const valid = Array.from(incoming).filter(f => {
       const ext = '.' + f.name.split('.').pop().toLowerCase()
@@ -21,66 +57,54 @@ export default function UploadArea({ notes, setNotes, files, setFiles, onAnalyze
     e.target.value = ''
   }
 
-  const handleDrop = (e) => {
-    e.preventDefault()
-    addFiles(e.dataTransfer.files)
-  }
-
   const canAnalyze = notes.trim().length > 0 || files.length > 0
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">Phase 1 — Client Notes</h2>
-        <p className="text-sm text-gray-500">
-          Upload files and/or paste notes below. All content will be combined and analyzed together.
-        </p>
+    <div className="flex flex-col items-center w-full">
+      {/* Dynamic title */}
+      <div className="text-center mb-6">
+        <h1 className="text-4xl font-bold text-gray-900" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>{TAB_META[activeTab]?.title}</h1>
+        <p className="text-sm text-gray-500 mt-2">{TAB_META[activeTab]?.subtitle}</p>
       </div>
 
-      <div
-        onDrop={handleDrop}
-        onDragOver={(e) => e.preventDefault()}
-        className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors"
-      >
-        <input
-          type="file"
-          multiple
-          accept=".txt,.md,.docx,.pdf,.pptx"
-          onChange={handleInput}
-          className="hidden"
-          id="file-upload"
-        />
-        <label htmlFor="file-upload" className="cursor-pointer block">
-          <svg
-            className="mx-auto h-10 w-10 text-gray-300 mb-3"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      {/* Tabs — 2×2 grid */}
+      <div className="grid grid-cols-2 gap-1 mb-4 bg-black/5 rounded-2xl p-1.5 border border-black/8 w-full">
+        {TABS.map(tab => (
+          <button
+            key={tab}
+            onClick={() => onTabChange(tab)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 text-center ${
+              activeTab === tab
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
-          <p className="text-sm text-gray-600">
-            Drop files here or <span className="text-blue-600 font-medium">browse</span>
-          </p>
-          <p className="text-xs text-gray-400 mt-1">.txt · .md · .docx · .pdf · .pptx</p>
-        </label>
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Card */}
+      <div className="w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={9}
+          placeholder={PLACEHOLDERS[activeTab]}
+          className="w-full px-6 pt-6 pb-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none resize-none leading-relaxed"
+        />
 
         {files.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4 justify-center">
+          <div className="flex flex-wrap gap-2 px-6 pb-3">
             {files.map(f => (
               <span
                 key={f.name}
-                className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-full max-w-[220px]"
+                className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-full max-w-[220px]"
               >
                 <span className="truncate">{f.name}</span>
                 <button
                   type="button"
-                  onClick={(e) => { e.preventDefault(); removeFile(f.name) }}
+                  onClick={() => removeFile(f.name)}
                   className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-blue-400 hover:bg-blue-200 hover:text-blue-700 transition-colors"
                   aria-label={`Remove ${f.name}`}
                 >
@@ -90,41 +114,58 @@ export default function UploadArea({ notes, setNotes, files, setFiles, onAnalyze
             ))}
           </div>
         )}
-      </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Or paste notes directly
-        </label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={14}
-          placeholder="Client called on Thursday. They need a new dashboard for their ops team showing real-time inventory levels. Sarah (PM) and John (CTO) are the main contacts. Must be live before Q2..."
-          className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-        />
-      </div>
+        <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100">
+          <div className="flex items-center gap-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".txt,.md,.docx,.pdf,.pptx"
+              onChange={handleInput}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors font-medium"
+            >
+              <span className="text-base font-light leading-none">+</span>
+              <span>Attach</span>
+            </button>
+            {notes.trim() && (
+              <button
+                type="button"
+                onClick={() => { setNotes(''); setFiles([]) }}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
 
-      <button
-        onClick={onAnalyze}
-        disabled={!canAnalyze || loading}
-        className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {loading ? (
-          <span className="flex items-center justify-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-            Analyzing...
-          </span>
-        ) : (
-          <span className="flex items-center justify-center gap-2">
-            <SparklesIcon className="w-4 h-4" />
-            Analyze Notes{files.length > 0 && ` + ${files.length} file${files.length > 1 ? 's' : ''}`}
-          </span>
-        )}
-      </button>
+          <button
+            onClick={onAnalyze}
+            disabled={!canAnalyze || loading}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Analyzing…
+              </>
+            ) : (
+              <>
+                <SparklesIcon className="w-4 h-4" />
+                Analyze{files.length > 0 && ` + ${files.length} file${files.length > 1 ? 's' : ''}`}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
