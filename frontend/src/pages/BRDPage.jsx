@@ -155,7 +155,7 @@ function RequirementCard({ req, checkedIds, onToggleCheck, onGenerateBRD, onAnal
   const bgColor = { matched: 'bg-green-50/40', partial: 'bg-amber-50/40', unmatched: 'bg-red-50/40' }
   const subBrds = req.subBrds || []
   const hasSplit = subBrds.length > 0
-  const canSplit = req.status === 'unmatched' || req.status === 'partial'
+  const generatedCount = subBrds.filter(s => s.generated).length
 
   return (
     <div className={`border-l-4 ${borderColor[req.status]} ${bgColor[req.status]} bg-white border border-gray-200 rounded-xl p-5 space-y-3`}>
@@ -205,24 +205,41 @@ function RequirementCard({ req, checkedIds, onToggleCheck, onGenerateBRD, onAnal
       {hasSplit && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-500">Split into {subBrds.length} BRDs</p>
+            <p className="text-xs font-semibold text-gray-500">
+              Split into {subBrds.length} BRDs · {generatedCount} of {subBrds.length} generated
+            </p>
             <button onClick={() => onClearSplit(req.name)} className="text-xs text-gray-400 hover:text-red-500">Clear split</button>
           </div>
           {subBrds.map((sub, i) => (
             <div key={i} className="rounded-lg border border-gray-200 bg-gray-50/60 p-3 flex items-start gap-3">
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800">{sub.name}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-gray-800">{sub.name}</p>
+                  {sub.generated && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      Generated
+                    </span>
+                  )}
+                </div>
                 {sub.points && <p className="text-xs text-gray-500 whitespace-pre-wrap mt-0.5">{sub.points}</p>}
               </div>
               <button
                 onClick={() => onGenerateBRD(req, sub)}
                 disabled={loading}
-                className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
+                className={`flex-shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg border disabled:opacity-50 transition-colors ${
+                  sub.generated
+                    ? 'text-gray-500 bg-white border-gray-300 hover:bg-gray-50'
+                    : 'text-violet-700 bg-white border-violet-300 hover:bg-violet-50'
+                }`}
               >
-                {loading ? 'Starting…' : 'Generate BRD'}
+                {loading ? 'Starting…' : (sub.generated ? 'Regenerate' : 'Generate BRD')}
               </button>
             </div>
           ))}
+          {generatedCount === subBrds.length
+            ? <p className="text-xs text-green-700">All split BRDs generated.</p>
+            : <p className="text-xs text-gray-400">{subBrds.length - generatedCount} remaining — generate each, then use “Back to match results” to return here.</p>}
         </div>
       )}
 
@@ -233,31 +250,38 @@ function RequirementCard({ req, checkedIds, onToggleCheck, onGenerateBRD, onAnal
         />
       )}
 
-      {canSplit && !hasSplit && !splitOpen && (
-        <div className="flex gap-2 flex-wrap">
-          {req.status === 'partial' && (
-            <button
-              onClick={() => onAnalyzeGap(req)}
-              disabled={loading}
-              className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
-            >
-              Update Existing BRD
-            </button>
+      {!hasSplit && !splitOpen && (
+        <div className="space-y-2">
+          {req.status === 'matched' && (
+            <p className="text-xs text-gray-400">
+              Covered by an existing BRD. If that coverage is incomplete, you can still generate another BRD or split this requirement.
+            </p>
           )}
-          <button
-            onClick={() => onGenerateBRD(req)}
-            disabled={loading}
-            className="px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
-          >
-            {req.status === 'partial' ? 'Generate New BRD' : (loading ? 'Starting…' : 'Generate BRD')}
-          </button>
-          <button
-            onClick={() => setSplitOpen(true)}
-            disabled={loading}
-            className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            Split into multiple BRDs
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            {req.status === 'partial' && (
+              <button
+                onClick={() => onAnalyzeGap(req)}
+                disabled={loading}
+                className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
+              >
+                Update Existing BRD
+              </button>
+            )}
+            <button
+              onClick={() => onGenerateBRD(req)}
+              disabled={loading}
+              className="px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
+            >
+              {loading ? 'Starting…' : (req.status === 'unmatched' ? 'Generate BRD' : 'Generate New BRD')}
+            </button>
+            <button
+              onClick={() => setSplitOpen(true)}
+              disabled={loading}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              Split into multiple BRDs
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -470,6 +494,7 @@ export default function BRDPage() {
   const [matchResults, setMatchResults] = useState([])
   const [showMatchPhase, setShowMatchPhase] = useState(false)
   const [checkedReqIds, setCheckedReqIds] = useState(new Set())
+  const [activeSplit, setActiveSplit] = useState(null) // { reqName, subName } of the sub-BRD currently being generated
   const [activeGapReq, setActiveGapReq] = useState(null)
   const [gapReport, setGapReport] = useState(null)
   const [gapLoading, setGapLoading] = useState(false)
@@ -533,6 +558,7 @@ export default function BRDPage() {
   const handleGenerateForRequirement = async (req, scope = null) => {
     setLoading(true)
     setError('')
+    setActiveSplit(scope ? { reqName: req.name, subName: scope.name } : null)
     try {
       const base = sourceNotes || notes
       const reqNotes = scope
@@ -640,6 +666,16 @@ export default function BRDPage() {
     setBrd(finalBrd)
     setPhase(4)
 
+    // Mark the split sub-BRD as generated so progress is tracked when the user
+    // returns to the match results to generate the remaining slices.
+    if (activeSplit) {
+      setMatchResults(prev => prev.map(r =>
+        r.name === activeSplit.reqName
+          ? { ...r, subBrds: (r.subBrds || []).map(s => s.name === activeSplit.subName ? { ...s, generated: true } : s) }
+          : r
+      ))
+    }
+
     const entry = {
       id: crypto.randomUUID(),
       brdId,
@@ -708,6 +744,7 @@ export default function BRDPage() {
     setMatchResults([])
     setShowMatchPhase(false)
     setCheckedReqIds(new Set())
+    setActiveSplit(null)
     setActiveGapReq(null)
     setGapReport(null)
     setGapError('')
@@ -882,7 +919,7 @@ export default function BRDPage() {
             {(phase === 2 || phase === 3 || phase === 4) && matchResults.length > 0 && (
               <button
                 onClick={backToMatch}
-                className="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                className="mb-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />

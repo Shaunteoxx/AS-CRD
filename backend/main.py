@@ -1415,11 +1415,13 @@ EXTRACTION RULES — follow these exactly:
 - If the CRD does not have a clearly labelled Business Requirements section with numbered BR items, only then fall back to inferring requirements from the document as a whole.
 
 For each extracted requirement, determine one of three match states:
-- matched: an existing BRD substantially and comprehensively covers the requirement. Be conservative — only use this if coverage is truly comprehensive.
+- matched: an existing BRD substantially and comprehensively covers the ENTIRE requirement. Be conservative — only use this if every distinct capability in the requirement is covered.
 - partial: an existing BRD covers some aspects but there are clear gaps or new aspects not captured.
 - unmatched: no existing BRD covers this requirement at all.
 
-For partial matches, the coverage_note must explain what is already covered AND what is missing or new.
+IMPORTANT: Many requirements describe several distinct capabilities (e.g. "manage users, configure solutions, and set up workspaces"). If an existing BRD covers only some of those capabilities, the status is partial — NOT matched — even if the part it covers is covered well. Only use matched when nothing of substance is left uncovered.
+
+For partial matches, the coverage_note must explain what is already covered AND, specifically, which distinct capabilities are still missing.
 
 CRITICAL: matched_brd and matched_brd_link must refer to one of the documents in the EXISTING BRDs list below, using its exact name and Drive link. Never invent a BRD name or link. If the EXISTING BRDs list says "No existing BRDs found" or contains no document that covers a requirement, that requirement is unmatched.
 
