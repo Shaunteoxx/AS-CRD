@@ -1426,7 +1426,11 @@ IMPORTANT: Many requirements describe several distinct capabilities (e.g. "manag
 
 For partial matches, the coverage_note must explain what is already covered AND, specifically, which distinct capabilities are still missing.
 
-CRITICAL: matched_brd and matched_brd_link must refer to one of the documents in the EXISTING BRDs list below, using its exact name and Drive link. Never invent a BRD name or link. If the EXISTING BRDs list says "No existing BRDs found" or contains no document that covers a requirement, that requirement is unmatched.
+CRITICAL — matched_brds:
+- List EVERY existing BRD that covers any part of the requirement in the matched_brds array, each with its exact name and Drive link from the EXISTING BRDs list below. A requirement is often covered by several BRDs — include all of them, not just one.
+- Use only documents that appear in the EXISTING BRDs list. Never invent a BRD name or link.
+- For unmatched requirements, matched_brds must be an empty array [].
+- Base your coverage judgement ONLY on the actual text of the EXISTING BRDs provided below. Do not claim a capability is missing if it is present in any of the provided BRDs.
 
 Return ONLY a valid JSON object — no preamble, no explanation, no markdown fences:
 {{
@@ -1437,8 +1441,9 @@ Return ONLY a valid JSON object — no preamble, no explanation, no markdown fen
       "crd_source": "C-XX-01",
       "br_id": "BR-01",
       "status": "matched",
-      "matched_brd": "Exact BRD document name",
-      "matched_brd_link": "https://drive.google.com/...",
+      "matched_brds": [
+        {{ "name": "Exact BRD document name", "link": "https://drive.google.com/..." }}
+      ],
       "coverage_note": null
     }},
     {{
@@ -1447,9 +1452,11 @@ Return ONLY a valid JSON object — no preamble, no explanation, no markdown fen
       "crd_source": "C-XX-01",
       "br_id": "BR-02",
       "status": "partial",
-      "matched_brd": "Exact BRD document name",
-      "matched_brd_link": "https://drive.google.com/...",
-      "coverage_note": "Existing BRD covers X but does not capture Y."
+      "matched_brds": [
+        {{ "name": "First covering BRD", "link": "https://drive.google.com/..." }},
+        {{ "name": "Second covering BRD", "link": "https://drive.google.com/..." }}
+      ],
+      "coverage_note": "These BRDs cover X and Y but do not capture Z."
     }},
     {{
       "name": "New requirement",
@@ -1457,8 +1464,7 @@ Return ONLY a valid JSON object — no preamble, no explanation, no markdown fen
       "crd_source": "C-XX-01",
       "br_id": "BR-03",
       "status": "unmatched",
-      "matched_brd": null,
-      "matched_brd_link": null,
+      "matched_brds": [],
       "coverage_note": null
     }}
   ]
@@ -1485,34 +1491,47 @@ EXISTING BRDs:
         logger.error("Match JSON parse error: %s | raw: %s", exc, raw[:300])
         raise HTTPException(status_code=500, detail="Failed to parse match results from model")
 
-    # Guard against hallucinated matches: a requirement may only be reported as
-    # matched/partial if it points to a BRD that actually exists in the Drive
-    # folder. Anything else is downgraded to unmatched.
-    valid_names = {b["name"].strip().lower() for b in existing_brds}
-
+    # Guard against hallucinated matches: every BRD a requirement claims to be
+    # covered by must actually exist in the Drive folder. Validate the whole
+    # matched_brds list; if nothing valid remains, downgrade to unmatched.
     def _file_id(link: str) -> str:
         m = re.search(r'/d/([a-zA-Z0-9_-]+)', link or "")
         if not m:
             m = re.search(r'[?&]id=([a-zA-Z0-9_-]+)', link or "")
         return m.group(1) if m else ""
 
-    valid_ids = {_file_id(b["link"]) for b in existing_brds if _file_id(b["link"])}
+    by_name = {b["name"].strip().lower(): b for b in existing_brds}
+    by_id = {_file_id(b["link"]): b for b in existing_brds if _file_id(b["link"])}
 
     requirements = data.get("requirements", [])
     for req in requirements:
-        if req.get("status") not in ("matched", "partial"):
-            continue
-        name_ok = (req.get("matched_brd") or "").strip().lower() in valid_names
-        link_ok = _file_id(req.get("matched_brd_link") or "") in valid_ids
-        if not (name_ok or link_ok):
-            logger.warning(
-                "Downgrading hallucinated match: req=%r claimed brd=%r",
-                req.get("name"), req.get("matched_brd"),
-            )
+        # Normalise: accept the new array, or fall back to a single legacy field.
+        claimed = req.get("matched_brds")
+        if not isinstance(claimed, list):
+            if req.get("matched_brd"):
+                claimed = [{"name": req.get("matched_brd"), "link": req.get("matched_brd_link")}]
+            else:
+                claimed = []
+
+        # Keep only entries that resolve to a real BRD, de-duplicated.
+        valid, seen = [], set()
+        for entry in claimed:
+            if not isinstance(entry, dict):
+                continue
+            real = by_name.get((entry.get("name") or "").strip().lower()) or by_id.get(_file_id(entry.get("link") or ""))
+            if real and real["id"] not in seen:
+                seen.add(real["id"])
+                valid.append({"name": real["name"], "link": real["link"]})
+
+        if req.get("status") in ("matched", "partial") and not valid:
+            logger.warning("Downgrading hallucinated match: req=%r claimed=%r", req.get("name"), claimed)
             req["status"] = "unmatched"
-            req["matched_brd"] = None
-            req["matched_brd_link"] = None
             req["coverage_note"] = None
+
+        req["matched_brds"] = valid
+        # Primary match kept for backward compatibility (e.g. the gap/update flow).
+        req["matched_brd"] = valid[0]["name"] if valid else None
+        req["matched_brd_link"] = valid[0]["link"] if valid else None
 
     return {"requirements": requirements, "combined_notes": combined}
 

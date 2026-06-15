@@ -156,6 +156,9 @@ function RequirementCard({ req, checkedIds, onToggleCheck, onGenerateBRD, onAnal
   const subBrds = req.subBrds || []
   const hasSplit = subBrds.length > 0
   const generatedCount = subBrds.filter(s => s.generated).length
+  const matchedBrds = Array.isArray(req.matched_brds) && req.matched_brds.length > 0
+    ? req.matched_brds
+    : (req.matched_brd ? [{ name: req.matched_brd, link: req.matched_brd_link }] : [])
 
   return (
     <div className={`border-l-4 ${borderColor[req.status]} ${bgColor[req.status]} bg-white border border-gray-200 rounded-xl p-5 space-y-3`}>
@@ -180,19 +183,26 @@ function RequirementCard({ req, checkedIds, onToggleCheck, onGenerateBRD, onAnal
         </div>
       </div>
 
-      {req.matched_brd && (
-        <div className="flex items-center gap-1.5 text-sm">
-          <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <a
-            href={req.matched_brd_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-violet-600 hover:text-violet-800 hover:underline truncate"
-          >
-            {req.matched_brd}
-          </a>
+      {matchedBrds.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-gray-500">
+            Covered by {matchedBrds.length} existing BRD{matchedBrds.length > 1 ? 's' : ''}:
+          </p>
+          {matchedBrds.map((b, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-sm">
+              <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <a
+                href={b.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-violet-600 hover:text-violet-800 hover:underline truncate"
+              >
+                {b.name}
+              </a>
+            </div>
+          ))}
         </div>
       )}
 
