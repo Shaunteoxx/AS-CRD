@@ -2,7 +2,7 @@
 
 <!-- AI Instructions: The title (#) is the name of the business capability this BRD covers, e.g. "Permit Applications", "User & Project Management". Write it in plain English — no CRD IDs, no client names. -->
 
-**B-[number] Business Requirements**
+**Business Requirements**
 **First Created:** <!-- AI: Use today's date in YYYY-MM-DD format -->
 **Initial CR:** <!-- AI: List the primary source CRD ID and name, e.g. C-GTS-01 - Greentech Solutions -->
 **Written By:**
