@@ -96,17 +96,185 @@ function StatusBadge({ status }) {
   )
 }
 
-function MatchResults({ requirements, checkedIds, onToggleCheck, onGenerateBRD, onGenerateAll, onAnalyzeGap, loading, onUploadAnother }) {
+function SplitEditor({ onApply, onCancel }) {
+  const [rows, setRows] = useState([{ name: '', points: '' }, { name: '', points: '' }])
+  const update = (i, field, val) => setRows(rs => rs.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+  const addRow = () => setRows(rs => [...rs, { name: '', points: '' }])
+  const removeRow = (i) => setRows(rs => rs.filter((_, idx) => idx !== i))
+  const valid = rows.filter(r => r.name.trim())
+
+  return (
+    <div className="mt-1 rounded-lg border border-violet-200 bg-violet-50/40 p-4 space-y-3">
+      <div>
+        <p className="text-xs font-semibold text-violet-800">Split into multiple BRDs</p>
+        <p className="text-xs text-gray-500">Define each BRD's title and the key points it should cover. Each one is generated as its own document.</p>
+      </div>
+      {rows.map((row, i) => (
+        <div key={i} className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-400">BRD {i + 1}</span>
+            {rows.length > 2 && (
+              <button onClick={() => removeRow(i)} className="ml-auto text-xs text-gray-400 hover:text-red-500">Remove</button>
+            )}
+          </div>
+          <input
+            value={row.name}
+            onChange={(e) => update(i, 'name', e.target.value)}
+            placeholder="BRD title (e.g. User Management)"
+            className="w-full text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-violet-500 focus:border-violet-500 outline-none"
+          />
+          <textarea
+            value={row.points}
+            onChange={(e) => update(i, 'points', e.target.value)}
+            placeholder="Key points / scope this BRD should cover"
+            rows={2}
+            className="w-full text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-violet-500 focus:border-violet-500 outline-none resize-y"
+          />
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <button onClick={addRow} className="text-xs font-medium text-violet-700 hover:text-violet-900">+ Add another BRD</button>
+        <div className="ml-auto flex gap-2">
+          <button onClick={onCancel} className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700">Cancel</button>
+          <button
+            onClick={() => onApply(valid)}
+            disabled={valid.length < 2}
+            className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-40 transition-colors"
+          >
+            Apply split ({valid.length})
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RequirementCard({ req, checkedIds, onToggleCheck, onGenerateBRD, onAnalyzeGap, onApplySplit, onClearSplit, loading }) {
+  const [splitOpen, setSplitOpen] = useState(false)
+  const borderColor = { matched: 'border-l-green-400', partial: 'border-l-amber-400', unmatched: 'border-l-red-400' }
+  const bgColor = { matched: 'bg-green-50/40', partial: 'bg-amber-50/40', unmatched: 'bg-red-50/40' }
+  const subBrds = req.subBrds || []
+  const hasSplit = subBrds.length > 0
+  const canSplit = req.status === 'unmatched' || req.status === 'partial'
+
+  return (
+    <div className={`border-l-4 ${borderColor[req.status]} ${bgColor[req.status]} bg-white border border-gray-200 rounded-xl p-5 space-y-3`}>
+      <div className="flex items-start gap-3">
+        {req.status === 'unmatched' && !hasSplit && (
+          <input
+            type="checkbox"
+            checked={checkedIds.has(req.name)}
+            onChange={() => onToggleCheck(req.name)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 flex-shrink-0 cursor-pointer"
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-semibold text-gray-900">{req.name}</span>
+            <StatusBadge status={req.status} />
+          </div>
+          <p className="text-sm text-gray-600">{req.description}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            Source: {req.crd_source}{req.br_id ? ` · ${req.br_id}` : ''}
+          </p>
+        </div>
+      </div>
+
+      {req.matched_brd && (
+        <div className="flex items-center gap-1.5 text-sm">
+          <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <a
+            href={req.matched_brd_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-violet-600 hover:text-violet-800 hover:underline truncate"
+          >
+            {req.matched_brd}
+          </a>
+        </div>
+      )}
+
+      {req.status === 'partial' && req.coverage_note && (
+        <p className="text-sm italic text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          {req.coverage_note}
+        </p>
+      )}
+
+      {hasSplit && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-500">Split into {subBrds.length} BRDs</p>
+            <button onClick={() => onClearSplit(req.name)} className="text-xs text-gray-400 hover:text-red-500">Clear split</button>
+          </div>
+          {subBrds.map((sub, i) => (
+            <div key={i} className="rounded-lg border border-gray-200 bg-gray-50/60 p-3 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800">{sub.name}</p>
+                {sub.points && <p className="text-xs text-gray-500 whitespace-pre-wrap mt-0.5">{sub.points}</p>}
+              </div>
+              <button
+                onClick={() => onGenerateBRD(req, sub)}
+                disabled={loading}
+                className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
+              >
+                {loading ? 'Starting…' : 'Generate BRD'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!hasSplit && splitOpen && (
+        <SplitEditor
+          onApply={(rows) => { onApplySplit(req.name, rows); setSplitOpen(false) }}
+          onCancel={() => setSplitOpen(false)}
+        />
+      )}
+
+      {canSplit && !hasSplit && !splitOpen && (
+        <div className="flex gap-2 flex-wrap">
+          {req.status === 'partial' && (
+            <button
+              onClick={() => onAnalyzeGap(req)}
+              disabled={loading}
+              className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
+            >
+              Update Existing BRD
+            </button>
+          )}
+          <button
+            onClick={() => onGenerateBRD(req)}
+            disabled={loading}
+            className="px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
+          >
+            {req.status === 'partial' ? 'Generate New BRD' : (loading ? 'Starting…' : 'Generate BRD')}
+          </button>
+          <button
+            onClick={() => setSplitOpen(true)}
+            disabled={loading}
+            className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            Split into multiple BRDs
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MatchResults({ requirements, checkedIds, onToggleCheck, onGenerateBRD, onGenerateAll, onAnalyzeGap, onApplySplit, onClearSplit, loading, onUploadAnother }) {
   const matched = requirements.filter(r => r.status === 'matched')
   const partial = requirements.filter(r => r.status === 'partial')
   const unmatched = requirements.filter(r => r.status === 'unmatched')
   const allMatched = requirements.length > 0 && partial.length === 0 && unmatched.length === 0
 
-  const checkedUnmatched = unmatched.filter(r => checkedIds.has(r.name))
-  const generateAllTarget = checkedUnmatched.length > 0 ? checkedUnmatched : unmatched
-
-  const borderColor = { matched: 'border-l-green-400', partial: 'border-l-amber-400', unmatched: 'border-l-red-400' }
-  const bgColor = { matched: 'bg-green-50/40', partial: 'bg-amber-50/40', unmatched: 'bg-red-50/40' }
+  // Requirements that have been split into sub-BRDs are generated individually,
+  // so they're excluded from the "Generate All New" batch.
+  const batchable = unmatched.filter(r => !(r.subBrds && r.subBrds.length))
+  const checkedUnmatched = batchable.filter(r => checkedIds.has(r.name))
+  const generateAllTarget = checkedUnmatched.length > 0 ? checkedUnmatched : batchable
 
   return (
     <div className="space-y-6">
@@ -135,93 +303,26 @@ function MatchResults({ requirements, checkedIds, onToggleCheck, onGenerateBRD, 
 
       <div className="space-y-3">
         {requirements.map((req) => (
-          <div
+          <RequirementCard
             key={req.name}
-            className={`border-l-4 ${borderColor[req.status]} ${bgColor[req.status]} bg-white border border-gray-200 rounded-xl p-5 space-y-3`}
-          >
-            <div className="flex items-start gap-3">
-              {req.status === 'unmatched' && (
-                <input
-                  type="checkbox"
-                  checked={checkedIds.has(req.name)}
-                  onChange={() => onToggleCheck(req.name)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 flex-shrink-0 cursor-pointer"
-                />
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="font-semibold text-gray-900">{req.name}</span>
-                  <StatusBadge status={req.status} />
-                </div>
-                <p className="text-sm text-gray-600">{req.description}</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Source: {req.crd_source}{req.br_id ? ` · ${req.br_id}` : ''}
-                </p>
-              </div>
-            </div>
-
-            {req.matched_brd && (
-              <div className="flex items-center gap-1.5 text-sm">
-                <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <a
-                  href={req.matched_brd_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-violet-600 hover:text-violet-800 hover:underline truncate"
-                >
-                  {req.matched_brd}
-                </a>
-              </div>
-            )}
-
-            {req.status === 'partial' && req.coverage_note && (
-              <p className="text-sm italic text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                {req.coverage_note}
-              </p>
-            )}
-
-            {req.status === 'partial' && (
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => onAnalyzeGap(req)}
-                  disabled={loading}
-                  className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
-                >
-                  Update Existing BRD
-                </button>
-                <button
-                  onClick={() => onGenerateBRD(req)}
-                  disabled={loading}
-                  className="px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
-                >
-                  Generate New BRD
-                </button>
-              </div>
-            )}
-
-            {req.status === 'unmatched' && (
-              <div>
-                <button
-                  onClick={() => onGenerateBRD(req)}
-                  disabled={loading}
-                  className="px-3 py-1.5 text-sm font-medium text-violet-700 bg-white border border-violet-300 rounded-lg hover:bg-violet-50 disabled:opacity-50 transition-colors"
-                >
-                  {loading ? 'Starting…' : 'Generate BRD'}
-                </button>
-              </div>
-            )}
-          </div>
+            req={req}
+            checkedIds={checkedIds}
+            onToggleCheck={onToggleCheck}
+            onGenerateBRD={onGenerateBRD}
+            onAnalyzeGap={onAnalyzeGap}
+            onApplySplit={onApplySplit}
+            onClearSplit={onClearSplit}
+            loading={loading}
+          />
         ))}
       </div>
 
-      {unmatched.length > 0 && (
+      {batchable.length > 0 && (
         <div className="flex items-center justify-between pt-4 border-t border-gray-200">
           <p className="text-xs text-gray-400">
             {checkedUnmatched.length > 0
-              ? `${checkedUnmatched.length} of ${unmatched.length} new requirements selected`
-              : `${unmatched.length} new requirement${unmatched.length > 1 ? 's' : ''} — select to filter, or generate all at once`}
+              ? `${checkedUnmatched.length} of ${batchable.length} new requirements selected`
+              : `${batchable.length} new requirement${batchable.length > 1 ? 's' : ''} — select to filter, or generate all at once`}
           </p>
           <button
             onClick={() => onGenerateAll(generateAllTarget)}
@@ -353,6 +454,7 @@ export default function BRDPage() {
 
   const [phase, setPhase] = useState(1)
   const [notes, setNotes] = useState('')
+  const [sourceNotes, setSourceNotes] = useState('')
   const [files, setFiles] = useState([])
   const [analysis, setAnalysis] = useState('')
   const [questions, setQuestions] = useState([])
@@ -419,6 +521,7 @@ export default function BRDPage() {
       const data = await res.json()
       setMatchResults(data.requirements || [])
       setNotes(data.combined_notes || notes)
+      setSourceNotes(data.combined_notes || notes)
       setShowMatchPhase(true)
     } catch (e) {
       setError(`Analysis failed: ${e.message}`)
@@ -427,12 +530,17 @@ export default function BRDPage() {
     }
   }
 
-  const handleGenerateForRequirement = async (req) => {
+  const handleGenerateForRequirement = async (req, scope = null) => {
     setLoading(true)
     setError('')
     try {
-      const reqNotes = `Requirement: ${req.name}\nDescription: ${req.description}\nSource CRD: ${req.crd_source}\n\nOriginal source documents:\n${notes}`
-      const reqAnalysis = `Generating BRD for: ${req.name}\n${req.description}\nSource: ${req.crd_source}`
+      const base = sourceNotes || notes
+      const reqNotes = scope
+        ? `This BRD covers ONLY a focused slice of a larger requirement. Generate a BRD strictly limited to the scope below — other slices are documented in separate BRDs, so do not include them.\n\nBRD Title: ${scope.name}\nIn-scope key points:\n${scope.points}\n\nParent requirement: ${req.name} — ${req.description}\nSource CRD: ${req.crd_source}\n\nOriginal source documents:\n${base}`
+        : `Requirement: ${req.name}\nDescription: ${req.description}\nSource CRD: ${req.crd_source}\n\nOriginal source documents:\n${base}`
+      const reqAnalysis = scope
+        ? `Generating BRD for: ${scope.name} — a focused slice of "${req.name}".\nIn-scope key points:\n${scope.points}\nSource: ${req.crd_source}`
+        : `Generating BRD for: ${req.name}\n${req.description}\nSource: ${req.crd_source}`
 
       const res = await authFetch(`${API}/brd/clarify`, {
         method: 'POST',
@@ -458,7 +566,7 @@ export default function BRDPage() {
     setError('')
     try {
       const reqList = reqs.map(r => `- ${r.name}: ${r.description} (${r.crd_source})`).join('\n')
-      const reqNotes = `Requirements to cover in this BRD:\n${reqList}\n\nOriginal source documents:\n${notes}`
+      const reqNotes = `Requirements to cover in this BRD:\n${reqList}\n\nOriginal source documents:\n${sourceNotes || notes}`
       const reqAnalysis = `Generating a BRD covering ${reqs.length} new requirement${reqs.length !== 1 ? 's' : ''}:\n${reqList}`
 
       const res = await authFetch(`${API}/brd/clarify`, {
@@ -566,9 +674,31 @@ export default function BRDPage() {
 
   const handleTabChange = (tab) => navigate(TAB_ROUTES[tab] || '/brd')
 
+  const applySplit = (reqName, subBrds) => {
+    setMatchResults(prev => prev.map(r => r.name === reqName ? { ...r, subBrds } : r))
+  }
+
+  const clearSplit = (reqName) => {
+    setMatchResults(prev => prev.map(r => {
+      if (r.name !== reqName) return r
+      const { subBrds, ...rest } = r
+      return rest
+    }))
+  }
+
+  const backToMatch = () => {
+    setShowMatchPhase(true)
+    setPhase(1)
+    setActiveGapReq(null)
+    setQuestions([])
+    setBrd('')
+    setError('')
+  }
+
   const reset = () => {
     setPhase(1)
     setNotes('')
+    setSourceNotes('')
     setFiles([])
     setAnalysis('')
     setQuestions([])
@@ -585,6 +715,7 @@ export default function BRDPage() {
 
   const handleUploadAnother = () => {
     setNotes('')
+    setSourceNotes('')
     setFiles([])
     setMatchResults([])
     setShowMatchPhase(false)
@@ -730,6 +861,8 @@ export default function BRDPage() {
                 onGenerateBRD={handleGenerateForRequirement}
                 onGenerateAll={handleGenerateAll}
                 onAnalyzeGap={handleAnalyzeGap}
+                onApplySplit={applySplit}
+                onClearSplit={clearSplit}
                 onUploadAnother={handleUploadAnother}
                 loading={loading}
               />
@@ -746,6 +879,17 @@ export default function BRDPage() {
               />
             )}
 
+            {(phase === 2 || phase === 3 || phase === 4) && matchResults.length > 0 && (
+              <button
+                onClick={backToMatch}
+                className="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                Back to match results
+              </button>
+            )}
             {phase === 2 && (
               <BRDClarify analysis={analysis} questions={questions} onGenerate={handleGenerate} loading={loading} />
             )}
