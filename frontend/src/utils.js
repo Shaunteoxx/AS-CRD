@@ -1,17 +1,54 @@
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
 export function getToken() {
   return sessionStorage.getItem('access_token') || ''
 }
 
-export function authFetch(url, options = {}) {
-  const token = getToken()
-  return fetch(url, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      ...options.headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  })
+// Dedupe concurrent refreshes: if several requests 401 at once, they all await
+// the same refresh call instead of firing one each.
+let refreshInFlight = null
+
+function refreshAccessToken() {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const r = await fetch(`${API}/auth/refresh`, { method: 'POST', credentials: 'include' })
+        if (!r.ok) return false
+        const data = await r.json()
+        if (data.access_token) {
+          sessionStorage.setItem('access_token', data.access_token)
+          return true
+        }
+        return false
+      } catch {
+        return false
+      }
+    })()
+    refreshInFlight.finally(() => { refreshInFlight = null })
+  }
+  return refreshInFlight
+}
+
+export async function authFetch(url, options = {}) {
+  const doFetch = () => {
+    const token = getToken()
+    return fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers: {
+        ...options.headers,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+  }
+
+  let res = await doFetch()
+  // Access token likely expired — try a silent refresh (using the long-lived
+  // refresh-token cookie) and retry the request once.
+  if (res.status === 401 && await refreshAccessToken()) {
+    res = await doFetch()
+  }
+  return res
 }
 
 export function extractClientName(markdown) {

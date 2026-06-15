@@ -276,7 +276,7 @@ async def auth_refresh(response: Response, refresh_token: str | None = Cookie(de
     response.set_cookie("access_token", data["access_token"], max_age=data.get("expires_in", 3600), **cookie_opts)
     if "refresh_token" in data:
         response.set_cookie("refresh_token", data["refresh_token"], max_age=30 * 24 * 3600, **cookie_opts)
-    return {"ok": True}
+    return {"ok": True, "access_token": data["access_token"], "expires_in": data.get("expires_in", 3600)}
 
 
 @app.post("/auth/logout")
