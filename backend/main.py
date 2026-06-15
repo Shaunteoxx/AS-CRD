@@ -1421,6 +1421,8 @@ For each extracted requirement, determine one of three match states:
 
 For partial matches, the coverage_note must explain what is already covered AND what is missing or new.
 
+CRITICAL: matched_brd and matched_brd_link must refer to one of the documents in the EXISTING BRDs list below, using its exact name and Drive link. Never invent a BRD name or link. If the EXISTING BRDs list says "No existing BRDs found" or contains no document that covers a requirement, that requirement is unmatched.
+
 Return ONLY a valid JSON object — no preamble, no explanation, no markdown fences:
 {{
   "requirements": [
@@ -1478,7 +1480,36 @@ EXISTING BRDs:
         logger.error("Match JSON parse error: %s | raw: %s", exc, raw[:300])
         raise HTTPException(status_code=500, detail="Failed to parse match results from model")
 
-    return {"requirements": data.get("requirements", []), "combined_notes": combined}
+    # Guard against hallucinated matches: a requirement may only be reported as
+    # matched/partial if it points to a BRD that actually exists in the Drive
+    # folder. Anything else is downgraded to unmatched.
+    valid_names = {b["name"].strip().lower() for b in existing_brds}
+
+    def _file_id(link: str) -> str:
+        m = re.search(r'/d/([a-zA-Z0-9_-]+)', link or "")
+        if not m:
+            m = re.search(r'[?&]id=([a-zA-Z0-9_-]+)', link or "")
+        return m.group(1) if m else ""
+
+    valid_ids = {_file_id(b["link"]) for b in existing_brds if _file_id(b["link"])}
+
+    requirements = data.get("requirements", [])
+    for req in requirements:
+        if req.get("status") not in ("matched", "partial"):
+            continue
+        name_ok = (req.get("matched_brd") or "").strip().lower() in valid_names
+        link_ok = _file_id(req.get("matched_brd_link") or "") in valid_ids
+        if not (name_ok or link_ok):
+            logger.warning(
+                "Downgrading hallucinated match: req=%r claimed brd=%r",
+                req.get("name"), req.get("matched_brd"),
+            )
+            req["status"] = "unmatched"
+            req["matched_brd"] = None
+            req["matched_brd_link"] = None
+            req["coverage_note"] = None
+
+    return {"requirements": requirements, "combined_notes": combined}
 
 
 class AnalyzeGapRequest(BaseModel):
