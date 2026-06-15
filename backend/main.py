@@ -92,6 +92,39 @@ async def require_auth(
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+def parse_questions(raw: str) -> list[str]:
+    """Best-effort extraction of a JSON array of question strings from model output.
+
+    Handles code fences (```json …```), surrounding prose, and responses wrapped
+    as an object like {"questions": [...]}.
+    """
+    text = (raw or "").strip()
+    if "```" in text:
+        m = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+        if m:
+            text = m.group(1).strip()
+
+    candidates = [text]
+    start, end = text.find("["), text.rfind("]")
+    if start != -1 and end > start:
+        candidates.append(text[start:end + 1])
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(data, dict):
+            data = data.get("questions") or next((v for v in data.values() if isinstance(v, list)), None)
+        if isinstance(data, list):
+            questions = [str(q).strip() for q in data if str(q).strip()]
+            if questions:
+                return questions
+
+    logger.error("parse_questions failed | raw: %s", (raw or "")[:300])
+    raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+
+
 def get_features_from_sheet() -> str:
     try:
         import gspread
@@ -392,17 +425,7 @@ Analysis:
 Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
     )
 
-    text = response.text.strip()
-    if "```" in text:
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    try:
-        questions = json.loads(text)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+    questions = parse_questions(response.text)
 
     return {"questions": questions}
 
@@ -613,17 +636,7 @@ Analysis:
 Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
     )
 
-    text = response.text.strip()
-    if "```" in text:
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    try:
-        questions = json.loads(text)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+    questions = parse_questions(response.text)
 
     return {"questions": questions}
 
@@ -814,17 +827,7 @@ Analysis:
 Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
     )
 
-    text = response.text.strip()
-    if "```" in text:
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    try:
-        questions = json.loads(text)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+    questions = parse_questions(response.text)
 
     return {"questions": questions}
 
@@ -1631,17 +1634,7 @@ Analysis:
 Respond with ONLY a JSON array of question strings, no other text. Example: ["Question 1?", "Question 2?"]"""
     )
 
-    text = response.text.strip()
-    if "```" in text:
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    try:
-        questions = json.loads(text)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse questions from model response")
+    questions = parse_questions(response.text)
 
     return {"questions": questions}
 
