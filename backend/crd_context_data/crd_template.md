@@ -1,37 +1,89 @@
-# Client Request Docs (CRD)
+<!--
+==================================================================
+CRD TEMPLATE  —  AI: read this header before filling anything.
+
+A CRD is the faithful record of ONE client's request. It is NOT the
+solution design — decomposition into deliverables happens later in BRDs.
+Capture and structure the request; do not redesign it.
+
+SINGLE-CLIENT DISCIPLINE:
+  • Exactly one subject client. Other companies in the sources may be
+    examples/partners/vendors — do not merge their needs in.
+  • Watch for near-identical names that are different entities or
+    engagements; keep them distinct.
+
+PLATFORM MODEL & NAMING (apply in your own prose only):
+  • Tiers: Platform → Workspace → Solution; with End Users and Workspace
+    Admin Users (roles: Owner, Collaborator). Solutions contain workflows.
+  • Do NOT use "project" or "team" as platform tiers. If a source uses
+    "project" for the tier grouping workflows, render it "Solution" and
+    add a Terminology Note. If "project" means a real-world construction
+    site, keep it and write "project (construction site)" on first use.
+  • Platform = "Allo8"; vendor/company = "Allocate Space". Do not adopt
+    other product names (e.g. "Allocate Checks", "Allocate Pay") in prose;
+    flag any such discrepancy in Open Issues.
+
+FAITHFUL-CAPTURE RULE:
+  • Term/name normalisation applies to YOUR prose only. In Supporting
+    Evidence, preserve the client's exact wording verbatim (including
+    "project" or any product name). Every normalisation and every
+    inference must also be listed in Open Issues.
+
+FORMATTING: keep a blank line between consecutive bold fields (Document
+Control, §1) so Markdown does not collapse them onto one line.
+
+GAPS: if a field is not in the sources, leave it blank and flag it in
+Open Issues. No "TBD"/"N/A".
+==================================================================
+-->
+
+# Client Request Document (CRD)
 
 ---
 
 ## Document Control
 
-**Docs ID:** <!-- AI: Use the exact same value as the generated filename for this document. Do not generate a new ID. -->
-**Client Name:** <!-- AI: Extract the client company name from the source documents -->
-**Prepared By:** <!-- AI: Leave blank — for the team to fill in -->
-**Date Prepared:** <!-- AI: Use today's date in YYYY-MM-DD format -->
-**Status:** <!-- AI: Always set to "Draft" -->
-**Linked BRD:** <!-- AI: Leave blank — for the team to fill in once the BRD is created -->
+**Docs ID:** <!-- AI: Exact same value as this document's filename. Do not generate a new ID or a CRD-001 format. -->
+
+**Client Name:** <!-- AI: The subject client's company name, extracted from the sources. -->
+
+**Prepared By:** <!-- AI: Leave blank — for the team. -->
+
+**Date Prepared:** <!-- AI: Today's date, YYYY-MM-DD. -->
+
+**Status:** Draft
+
+**Linked BRD:** <!-- AI: Leave blank — the team adds BRD IDs (e.g. B-03) here once BRDs are created, mapping to the BR-0N requirements below. -->
+
+<!-- AI: Include the Terminology Note line below ONLY if you normalised a source term (e.g. mapped "project" to "Solution"); otherwise delete it. -->
+**Terminology Note:** <!-- e.g. The source uses "project" for the platform tier grouping workflows; this is recorded here as "Solution". "project (construction site)" refers to a physical job site. -->
 
 ---
 
 ## 1. Client Information
 
 <!--
-AI Instructions:
-- Extract all client details from the source documents.
-- If a field cannot be found, leave it blank and flag it in Open Issues & Questions.
-- POC and Request Raised By can be the same person — note this if applicable.
-- For Source, list every type of document provided e.g. "Meeting Notes, Proposal Document". Do not select just one.
-- For Account Type, infer from company size, headcount, or revenue signals if not explicitly stated. Flag as inferred in Open Issues.
-- For ARR, extract only if explicitly stated. Do not estimate.
+AI:
+- Extract all client details; blank + flag in Open Issues if absent.
+- POC and Request Raised By may be the same person — note if so.
+- Source: list every type of document provided (e.g. "Meeting Notes, Proposal"), not just one.
+- Account Type: infer from size/headcount/revenue if not stated, and flag as inferred.
+- ARR: only if explicitly stated; never estimate.
 -->
 
 **Client Name:**
+
 **Point of Contact (POC):** _(name and role)_
+
 **Account Type:** Enterprise / SMB / Other
+
 **Annual Recurring Revenue (ARR):**
+
 **Request Raised By:** _(name and role — can be same as POC)_
+
 **Date of Request:** YYYY-MM-DD
-**Source:** _(list all that apply e.g. Meeting Notes, Proposal Document, Email)_
+
+**Source:** _(list all document types/names that apply)_
 
 ---
 
@@ -40,16 +92,10 @@ AI Instructions:
 ### 2.1 Underlying Problems
 
 <!--
-AI Instructions:
-- List each distinct problem the client is experiencing as a separate numbered point.
-- Focus on the ROOT problem — what is actually going wrong — not what the client is asking for.
-- Each problem point should describe one specific issue, not a combination of issues.
-- Write in plain, simple language that anyone can understand.
-- These problem points provide the context for the normalized requirements in §3, which are based on the desired outcomes in §2.2.
-
-Example:
-1. SunPro has no way to monitor energy generation and consumption across multiple sites in real time.
-2. SunPro cannot automate billing for clients under Power Purchase Agreements (PPAs).
+AI:
+- One distinct root problem per numbered point — what is actually going wrong, not what the client is asking for.
+- One issue per point; plain language.
+- These provide the context for the requirements in §3.
 -->
 
 1.
@@ -59,38 +105,26 @@ Example:
 ### 2.2 Desired Outcome
 
 <!--
-AI Instructions:
-- Write a short plain-language summary of what the client wants to achieve overall.
-- This is the high-level "end state" the client is working toward.
-- 2–4 sentences maximum.
-- Do not repeat the individual problem points from §2.1.
-- The normalized requirements in §3 will be derived from this section — make sure it captures all the key things the client is asking for.
-- After writing the desired outcome, cross-check every problem point listed in §2.1. Make sure each problem point is reflected in the desired outcome. If any problem point is not addressed, add it to the desired outcome before finishing this section.
+AI:
+- 2–4 sentences on the high-level end state the client wants. Do not repeat §2.1 point by point.
+- §3 requirements derive from this — ensure it captures everything the client is asking for.
+- Cross-check: every problem in §2.1 must be reflected here.
 -->
 
 ### 2.3 Trigger Event
 
 <!--
-AI Instructions:
-- Describe the specific event or change that prompted this request now.
-- This could be a regulatory deadline, a new business opportunity, a contract commitment, a competitive pressure, or an internal decision.
-- If multiple trigger events are mentioned, list each one separately.
-- If no trigger event is explicitly stated, infer from context and flag as inferred in Open Issues.
+AI:
+- The specific event/change prompting this request now (deadline, opportunity, contract, competitive/internal driver).
+- List multiple triggers separately. If none stated, infer from context and flag as inferred.
 -->
 
 ### 2.4 Request Constraints
 
 <!--
-AI Instructions:
-- List any limitations or conditions that apply to this client's request as a whole.
-- These are client-level constraints e.g. budget cap, existing system integrations, regulatory requirements, preferred vendors.
-- Do not list constraints that are specific to individual requirements — those go in the Normalized Requirements table in §3.
-- If no constraints are mentioned, leave blank and flag in Open Issues.
-
-Example:
-- Must integrate with existing Huawei and SunGrow inverters
-- Solution must be deployable on-site within 12 months
-- Payment processing must support PayNow
+AI:
+- Client-level limitations only (budget, required integrations, regulatory, preferred vendors).
+- Per-requirement constraints go in §3, not here. If none, leave blank and flag.
 -->
 
 -
@@ -101,19 +135,19 @@ Example:
 ## 3. Business Requirements
 
 <!--
-AI Instructions:
-- Create one entry for each distinct business requirement the client is asking for, based on §2.2 Desired Outcome.
-- Each entry is a requirement-level need — not a granular feature or sub-requirement. Group related actions into one entry.
-- BRD ID: use the format BR-01, BR-02, BR-03 and so on, incrementing for each requirement.
-- Business Name: write a short plain English name for the requirement — no acronyms, no jargon. e.g. "Permit application management", "Attendance taking", "Solar Energy monitoring and reporting". Spell out any technical terms in full.
-- Description: write 2-4 sentences describing what the requirement should do from the client's perspective. Cover what the user needs to do, how it should work at a high level, and what the expected outcome is. Do not describe technical implementation. Write as if explaining to someone with no product knowledge.
-- Constraints: list any constraints specific to this requirement only — not client-level constraints. These may come from §2.4 or the source documents. Leave blank if none apply.
-- After completing the list, cross-check every problem point in §2.1 to make sure each one is addressed by at least one entry. Add missing entries if needed.
+AI:
+- One entry per distinct business NEED (not per feature/sub-step); group related actions into one entry.
+- If a single need clearly spans multiple distinct actors or platform tiers (e.g. end users AND admins AND workspace setup), keep it as the client expressed it but add an Open Issue noting it may decompose into several BRDs downstream.
+- BR ID: BR-01, BR-02, … no letter suffixes.
+- Business Name: short plain-English name, no acronyms (spell terms out, e.g. "Permit application management", not "PTW").
+- Description: 2–4 sentences — what it should do, how it works at a high level, the client outcome. No technical implementation. Use the platform model/naming in your wording.
+- Constraints: specific to THIS requirement only; blank if none.
+- After listing, cross-check every problem in §2.1 is addressed by at least one entry; add entries if any is uncovered.
 -->
 
 **BR-01**
-- **Business Name:** _(Short plain English name)_
-- **Description:** _(What the requirement should do and what outcome it delivers for the client)_
+- **Business Name:** _(short plain English name)_
+- **Description:** _(what it should do and the client outcome)_
 - **Constraints:**
 
 **BR-02**
@@ -128,17 +162,17 @@ AI Instructions:
 
 ---
 
-*This docs was auto-generated from unstructured source documents. All content should be reviewed and validated by the team before use.*
+*This document was auto-generated from unstructured source documents. All content should be reviewed and validated by the team before use.*
 
 ---
 
 ## Appendix A — Supporting Evidence
 
 <!--
-AI Instructions:
-- Extract direct quotes that support or explain the problems and requirements identified above.
-- Preserve the exact original wording of every quote — do not paraphrase.
-- For each quote, identify the source document and include a timestamp, slide number, or page reference where available.
+AI:
+- Direct quotes that support the problems/requirements above.
+- Preserve EXACT original wording — do not paraphrase or normalise terms here.
+- Give the source document name and a reference (timestamp / slide / page) for each quote.
 -->
 
 **Direct Quotes**
@@ -157,11 +191,7 @@ AI Instructions:
 
 ## Appendix B — Internal Notes
 
-<!--
-AI Instructions:
-- Leave this entire section blank.
-- This section is for the team to fill in manually after reviewing the AI-generated content.
--->
+<!-- AI: Leave this entire section blank — for the team after review. -->
 
 **Additional Context**
 
@@ -169,19 +199,23 @@ _(Any additional context not captured in the source documents)_
 
 **Linked BRD**
 
-_(URL — added once the BRD is created)_
+_(URL / BRD IDs — added once the BRD is created)_
 
 ---
 
 ## Appendix C — Open Issues & Questions
 
 <!--
-AI Instructions:
-- List every field or section that could not be filled in from the source documents.
-- List every inference you made e.g. "Account Type inferred as SMB based on company headcount — team to verify".
-- List any contradictions or unclear information found across the source documents.
-- Keep the language neutral and factual — do not speculate or suggest answers.
-- Number each issue sequentially starting from 1.
+AI:
+- List every field/section that could not be filled, every inference, every term/name normalisation, and any contradiction or unclear point.
+- Flag requests that map mostly to "New" (future) platform capabilities with the roadmap-vs-custom question.
+- Flag any requirement that may decompose into multiple BRDs downstream.
+- Neutral, factual language. Number sequentially from 1.
+
+Examples:
+- "Account Type inferred as Enterprise based on headcount and project scale — team to verify."
+- "Source uses 'Allocate Checks' for the platform; recorded as 'Allo8' in prose — confirm product naming."
+- "BR-0X bundles end-user, solution, and workspace administration; may decompose into separate BRDs."
 -->
 
 1.
