@@ -58,8 +58,6 @@ GOLDEN RULES (the most common mistakes — avoid all of them):
 
 **Source Requirement(s):** <!-- AI: The specific requirement(s) inside the CRD(s) this implements, e.g. "C-GTS BR-04; C-GTS BR-05 (notification portion)". This is how the BRD traces back to the request. -->
 
-**Status:** <!-- AI: Draft / In Review / Approved. Default Draft. -->
-
 **Written By:** <!-- AI: Leave blank unless a source explicitly names the author. Do not invent a name. -->
 
 ---
@@ -92,36 +90,6 @@ GOLDEN RULES (the most common mistakes — avoid all of them):
 <!-- AI: Bullets, one measurable condition each. Metrics must be sourced. If a target is not in the source, write the criterion without the number and append "[target to be confirmed]". Do not invent figures. -->
 
 -
-
----
-
-## Scope
-
-<!-- AI: This section prevents overlap between BRDs. Be explicit. -->
-
-### In Scope
-
-<!-- AI: Bullets — what THIS BRD owns and delivers. -->
-
--
-
-### Out of Scope
-
-<!-- AI: Bullets — capabilities a reader might expect here but that belong elsewhere or to a later phase. Name the owner, e.g. "Solution roles — owned by Solution Management" / "Recurring scheduling — future phase". -->
-
--
-
----
-
-## Dependencies & Boundaries
-
-<!-- AI: 
-  • Consumes — what this BRD uses from other BRDs (e.g. "Forms from Form Builder", "Roles from Solution Management"). Reference by NAME, not by number.
-  • Design-time vs runtime — if relevant, state which side this BRD is on and which BRD owns the other side (e.g. "Workflow Builder configures the block; the Execution Viewer fires/delivers it at runtime").
-  • Omit this section only if the BRD genuinely stands alone. -->
-
-- **Consumes:**
-- **Owned elsewhere:**
 
 ---
 
