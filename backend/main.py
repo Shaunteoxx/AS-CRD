@@ -1031,6 +1031,18 @@ async def _fetch_one_brd(client: httpx.AsyncClient, token: str, f: dict) -> dict
     mime = f.get("mimeType", "")
     name = f.get("name", "")
     link = f.get("webViewLink", f"https://drive.google.com/file/d/{file_id}/view")
+
+    # Skip template/config files so the AI only matches against real BRDs.
+    name_lower = name.lower()
+    if (
+        re.search(r'(^|\s|-)template(\s|-|$)', name_lower) is not None
+        or name_lower.endswith((".md", ".txt"))
+        or "application/vnd.google-apps.shortcut" in mime
+        or "application/vnd.google-apps.folder" in mime
+    ):
+        logger.info("BRD fetch: skipping template/shortcut file '%s'", name)
+        return None
+
     try:
         if "google-apps.document" in mime:
             er = await client.get(
