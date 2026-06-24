@@ -37,7 +37,10 @@ Open Issues. No "TBD"/"N/A".
 ==================================================================
 -->
 
-# Client Request Document (CRD)
+# [Client Name]
+<!-- AI: Use the subject client's full company name exactly as it appears in the sources, e.g. "SunPro Energies Pte. Ltd.","Gim Tian Civil Engineering GT Safe". This is the document title. -->
+
+_Client Request Document (CRD)_
 
 ---
 
@@ -76,8 +79,6 @@ AI:
 **Point of Contact (POC):** _(name and role)_
 
 **Account Type:** Enterprise / SMB / Other
-
-**Annual Recurring Revenue (ARR):**
 
 **Request Raised By:** _(name and role — can be same as POC)_
 
@@ -139,26 +140,29 @@ AI:
 - One entry per distinct business NEED (not per feature/sub-step); group related actions into one entry.
 - If a single need clearly spans multiple distinct actors or platform tiers (e.g. end users AND admins AND workspace setup), keep it as the client expressed it but add an Open Issue noting it may decompose into several BRDs downstream.
 - BR ID: BR-01, BR-02, … no letter suffixes.
-- Business Name: short plain-English name, no acronyms (spell terms out, e.g. "Permit application management", not "PTW").
-- Description: 2–4 sentences — what it should do, how it works at a high level, the client outcome. No technical implementation. Use the platform model/naming in your wording.
-- Constraints: specific to THIS requirement only; blank if none.
+- Heading: "### BR-0N  <Business Name>" — the BR ID and a short plain-English name (no acronyms; spell terms out, e.g. "Permit application management", not "PTW") on one line, separated by two spaces.
+- Description: a paragraph of 2–4 sentences directly under the heading — what it should do, how it works at a high level, the client outcome. No label and no bullet list; no technical implementation. Use the platform model/naming in your wording.
+- Constraints: a single line beginning with the bold label "**Constraints**" then the constraint text, specific to THIS requirement only. Omit the line entirely if there are none.
 - After listing, cross-check every problem in §2.1 is addressed by at least one entry; add entries if any is uncovered.
 -->
 
-**BR-01**
-- **Business Name:** _(short plain English name)_
-- **Description:** _(what it should do and the client outcome)_
-- **Constraints:**
+### BR-01  _(Business Name)_
 
-**BR-02**
-- **Business Name:**
-- **Description:**
-- **Constraints:**
+_(Description — 2–4 sentences: what it should do, how it works at a high level, and the client outcome.)_
 
-**BR-03**
-- **Business Name:**
-- **Description:**
-- **Constraints:**
+**Constraints** _(specific to this requirement only; omit this line if there are none)_
+
+### BR-02  _(Business Name)_
+
+_(Description)_
+
+**Constraints** _(or omit if none)_ : 
+
+### BR-03  _(Business Name)_
+
+_(Description)_
+
+**Constraints** _(or omit if none)_
 
 ---
 

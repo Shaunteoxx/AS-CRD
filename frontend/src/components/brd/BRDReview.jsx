@@ -7,7 +7,7 @@ import { authFetch } from '../../utils'
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function parseSections(markdown) {
-  const parts = markdown.split(/(?=\n## )/)
+  const parts = markdown.split(/(?=\n#{1,3} )/)
   return parts.map((part, idx) => {
     const trimmed = part.trim()
     if (!trimmed) return null

@@ -1750,6 +1750,473 @@ Return ONLY the complete updated Markdown document with that section rewritten. 
     return {"brd": response.text}
 
 
+# ── Document Review Hub ───────────────────────────────────────────────────────
+
+DOCS_FOLDER_MAP = {
+    "crd": CRD_DRIVE_FOLDER_ID,
+    "brd": BRD_DRIVE_FOLDER_ID,
+    "ird": IRD_DRIVE_FOLDER_ID,
+}
+
+
+async def _get_drive_token(readonly: bool = True) -> str:
+    from google.oauth2.service_account import Credentials
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    scope = (
+        "https://www.googleapis.com/auth/drive.readonly"
+        if readonly
+        else "https://www.googleapis.com/auth/drive"
+    )
+    creds = Credentials.from_service_account_file(str(CREDENTIALS_PATH), scopes=[scope])
+    creds.refresh(GoogleAuthRequest())
+    return creds.token
+
+
+async def _list_folder_metadata(client: httpx.AsyncClient, token: str, folder_id: str, doc_type: str) -> list[dict]:
+    r = await client.get(
+        "https://www.googleapis.com/drive/v3/files",
+        headers={"Authorization": f"Bearer {token}"},
+        params={
+            "q": f"'{folder_id}' in parents and trashed=false",
+            "fields": "files(id,name,webViewLink,mimeType,modifiedTime)",
+            "pageSize": 100,
+        },
+    )
+    if not r.is_success:
+        return []
+    docs = []
+    for f in r.json().get("files", []):
+        name_lower = f.get("name", "").lower()
+        mime = f.get("mimeType", "")
+        if (
+            re.search(r'(^|\s|-)template(\s|-|$)', name_lower)
+            or name_lower.endswith((".md", ".txt"))
+            or "shortcut" in mime
+            or "folder" in mime
+        ):
+            continue
+        docs.append({
+            "id": f["id"],
+            "name": f["name"],
+            "type": doc_type,
+            "drive_link": f.get("webViewLink", f"https://drive.google.com/file/d/{f['id']}/view"),
+            "modified": f.get("modifiedTime", "")[:10],
+        })
+    return docs
+
+
+@app.get("/documents")
+async def list_documents(_: dict = Depends(require_auth)):
+    token = await _get_drive_token(readonly=True)
+    async with httpx.AsyncClient(timeout=30) as client:
+        results = await asyncio.gather(*(
+            _list_folder_metadata(client, token, folder_id, doc_type)
+            for doc_type, folder_id in DOCS_FOLDER_MAP.items()
+        ))
+    docs = [doc for batch in results for doc in batch]
+    docs.sort(key=lambda d: d["modified"], reverse=True)
+    return {"documents": docs}
+
+
+def _docx_to_markdown(docx_bytes: bytes) -> str:
+    """Convert DOCX bytes to markdown-structured text, preserving heading levels.
+
+    DOCX export from Google Docs reliably maps Heading 1 / Heading 2 / Heading 3
+    styles to proper paragraph styles regardless of how the doc was originally
+    created — unlike HTML export, which can use class-based styles instead of
+    semantic <h1>/<h2> tags when the doc was uploaded as HTML.
+    """
+    doc = Document(io.BytesIO(docx_bytes))
+
+    def _heading_level(style_name: str) -> int:
+        m = re.match(r'Heading (\d)', style_name or '')
+        return int(m.group(1)) if m else 0
+
+    def _is_list_item(para) -> bool:
+        pPr = para._p.pPr
+        return pPr is not None and pPr.numPr is not None
+
+    def _para_to_md(para) -> str:
+        level = _heading_level(para.style.name if para.style else '')
+        # Headings: keep text clean (no ** wrapping) so it matches the Doc's heading
+        # text exactly during surgical section replacement.
+        if level:
+            text = ''.join(r.text for r in para.runs).strip()
+            return ('#' * level + ' ' + text) if text else ''
+        # Body: preserve bold runs and bullet-list markers.
+        text = ''.join(
+            (f'**{r.text}**' if r.bold and r.text.strip() else r.text)
+            for r in para.runs
+        ).strip()
+        if not text:
+            return ''
+        if _is_list_item(para):
+            return '- ' + text
+        return text
+
+    def _table_to_md(table) -> list[str]:
+        rows = []
+        for i, row in enumerate(table.rows):
+            cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
+            rows.append('| ' + ' | '.join(cells) + ' |')
+            if i == 0:
+                rows.append('|' + '|'.join([' --- ' for _ in cells]) + '|')
+        return rows
+
+    parts = []
+    # Iterate body children to preserve paragraph/table order
+    for child in doc.element.body:
+        tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+        if tag == 'p':
+            from docx.text.paragraph import Paragraph as DocxParagraph
+            md = _para_to_md(DocxParagraph(child, doc))
+            if md:
+                parts.append(md)
+        elif tag == 'tbl':
+            from docx.table import Table as DocxTable
+            parts.extend(_table_to_md(DocxTable(child, doc)))
+
+    text = '\n\n'.join(parts)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _parse_sections(text: str) -> list[dict]:
+    """Split a markdown-structured document into sections at every #, ## or ### heading.
+
+    Splits on H1, H2 and H3 so docs work whether their section titles are styled
+    as Heading 1, 2 or 3 (e.g. each BR-0N requirement is an H3).  The first chunk
+    (document title / preamble before the first heading) is included only if it
+    has non-trivial content beyond just the H1 title line.
+    """
+    parts = re.split(r'(?=\n#{1,3} )', text)
+    sections = []
+    for i, part in enumerate(parts):
+        trimmed = part.strip()
+        if not trimmed:
+            continue
+        first_line = trimmed.split('\n')[0]
+        m = re.match(r'^#{1,3}\s+(.+)', first_line)
+        heading = m.group(1).strip() if m else "Document Overview"
+
+        # Skip the preamble if it is *only* the H1 title line (nothing else to show)
+        rest = '\n'.join(trimmed.split('\n')[1:]).strip()
+        if i == 0 and not rest and m and m.group(0).startswith('#') and not m.group(0).startswith('##'):
+            continue
+
+        sections.append({"heading": heading, "content": trimmed})
+    return sections
+
+
+@app.get("/documents/{doc_id}/content")
+async def get_document_content(doc_id: str, doc_type: str = "crd", _: dict = Depends(require_auth)):
+    token = await _get_drive_token(readonly=True)
+    async with httpx.AsyncClient(timeout=30) as client:
+        meta_r = await client.get(
+            f"https://www.googleapis.com/drive/v3/files/{doc_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"fields": "id,name,mimeType,webViewLink"},
+        )
+        if not meta_r.is_success:
+            raise HTTPException(status_code=404, detail="Document not found")
+        meta = meta_r.json()
+
+        if "google-apps.document" in meta.get("mimeType", ""):
+            # Export as DOCX — preserves Heading 1/2/3 styles reliably across all doc types
+            # HTML export can emit class-based styles instead of semantic <h2> tags for
+            # documents originally uploaded as HTML, causing section splitting to fail.
+            er = await client.get(
+                f"https://www.googleapis.com/drive/v3/files/{doc_id}/export",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+                timeout=20,
+            )
+            text = _docx_to_markdown(er.content) if er.is_success else ""
+        else:
+            dr = await client.get(
+                f"https://www.googleapis.com/drive/v3/files/{doc_id}?alt=media",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=20,
+            )
+            text = extract_text(Path(meta["name"]).suffix.lower(), dr.content) if dr.is_success else ""
+
+    if not text.strip():
+        raise HTTPException(status_code=500, detail="Could not read document content")
+
+    sections = _parse_sections(text)
+    title_match = re.search(r'^#\s+(.+)$', text, re.MULTILINE)
+    return {
+        "title": title_match.group(1).strip() if title_match else meta["name"],
+        "doc_type": doc_type,
+        "drive_link": meta.get("webViewLink", ""),
+        "sections": sections,
+        "full_content": text,
+    }
+
+
+class DocRegenerateRequest(BaseModel):
+    section_heading: str
+    instruction: str
+    doc_type: str
+    full_content: str
+
+
+def _get_doc_model(doc_type: str) -> genai.GenerativeModel:
+    if doc_type == "brd":
+        return get_brd_model(load_brd_context())
+    if doc_type == "ird":
+        return get_ird_model(load_ird_context())
+    return get_model(load_context())
+
+
+def _doc_field_key(doc_type: str) -> str:
+    return "brd" if doc_type == "brd" else "crd"
+
+
+async def _update_drive_doc(doc_id: str, markdown_content: str) -> None:
+    import markdown as md_lib
+    html_body = md_lib.markdown(markdown_content, extensions=["tables", "fenced_code"])
+    html = f"<!DOCTYPE html><html><body>{html_body}</body></html>"
+
+    token = await _get_drive_token(readonly=False)
+    boundary = "boundary_sep_417a"
+    body = (
+        f"--{boundary}\r\nContent-Type: application/json\r\n\r\n{{}}\r\n"
+        f"--{boundary}\r\nContent-Type: text/html\r\n\r\n{html}\r\n"
+        f"--{boundary}--"
+    ).encode("utf-8")
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.patch(
+            f"https://www.googleapis.com/upload/drive/v3/files/{doc_id}",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": f"multipart/related; boundary={boundary}",
+            },
+            params={"uploadType": "multipart"},
+            content=body,
+        )
+    if not r.is_success:
+        logger.warning("Drive update failed for %s: %s", doc_id, r.text)
+        raise HTTPException(status_code=502, detail=f"Failed to save document to Drive: {r.text}")
+
+
+# ----- Surgical section replacement via the Google Docs API -----
+# Instead of re-uploading the whole document (which makes Google Docs re-render
+# everything and lose the original formatting), we replace ONLY the regenerated
+# section's paragraphs in place, leaving every other section byte-for-byte intact.
+
+def _u16len(s: str) -> int:
+    """Length of a string in UTF-16 code units — what the Docs API uses for indices."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _extract_bold(text: str) -> tuple[str, list[tuple[int, int]]]:
+    """Strip **bold** markers, returning clean text + bold spans as UTF-16 offsets."""
+    bolds: list[tuple[int, int]] = []
+    out: list[str] = []
+    pos = 0
+    bold_on = False
+    for part in re.split(r'(\*\*)', text):
+        if part == '**':
+            bold_on = not bold_on
+            continue
+        if not part:
+            continue
+        start = pos
+        out.append(part)
+        pos += _u16len(part)
+        if bold_on:
+            bolds.append((start, pos))
+    return "".join(out), bolds
+
+
+def _parse_markdown_blocks(section_md: str) -> list[dict]:
+    """Parse a section's markdown into per-paragraph blocks for the Docs API.
+
+    Each block: {kind: heading1..6|bullet|number|normal, text, bolds}.
+    Mirrors how _docx_to_markdown emits one paragraph per line.
+    """
+    blocks: list[dict] = []
+    for raw in section_md.split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        kind = "normal"
+        text = line
+        m = re.match(r'^(#{1,6})\s+(.*)$', text)
+        if m:
+            kind = f"heading{len(m.group(1))}"
+            text = m.group(2).strip()
+        elif re.match(r'^[-*]\s+', text):
+            kind = "bullet"
+            text = re.sub(r'^[-*]\s+', '', text)
+        elif re.match(r'^\d+\.\s+', text):
+            kind = "number"
+            text = re.sub(r'^\d+\.\s+', '', text)
+        clean, bolds = _extract_bold(text)
+        blocks.append({"kind": kind, "text": clean, "bolds": bolds})
+    return blocks
+
+
+async def _replace_doc_section(doc_id: str, section_heading: str, next_heading: str | None, new_section_md: str) -> bool:
+    """Replace one section in a Google Doc in place via the Docs API.
+
+    Returns True on success, False if the section's heading couldn't be located
+    in the doc (e.g. the doc has no real heading styles) so the caller can fall back.
+    """
+    token = await _get_drive_token(readonly=False)
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(f"https://docs.googleapis.com/v1/documents/{doc_id}", headers=headers)
+        if not r.is_success:
+            logger.warning("Docs API read failed for %s: %s", doc_id, r.text)
+            return False
+        content = r.json().get("body", {}).get("content", [])
+
+        paras = []
+        for el in content:
+            p = el.get("paragraph")
+            if not p:
+                continue
+            txt = "".join(e.get("textRun", {}).get("content", "") for e in p.get("elements", []))
+            paras.append({"text": txt.strip("\n").strip(), "start": el["startIndex"], "end": el["endIndex"]})
+        if not paras:
+            return False
+        body_end = content[-1]["endIndex"]
+
+        target = section_heading.strip()
+        si = next((i for i, p in enumerate(paras) if p["text"] == target), None)
+        if si is None:
+            return False
+        section_start = paras[si]["start"]
+
+        section_end = None
+        if next_heading:
+            nh = next_heading.strip()
+            for p in paras[si + 1:]:
+                if p["text"] == nh:
+                    section_end = p["start"]
+                    break
+        is_last = section_end is None
+        if is_last:
+            section_end = body_end - 1  # keep the document's final newline
+
+        blocks = _parse_markdown_blocks(new_section_md)
+        if not blocks:
+            return False
+
+        # Build the plain text to insert (one paragraph per block).
+        if is_last:
+            insert_text = "\n".join(b["text"] for b in blocks)
+        else:
+            insert_text = "".join(b["text"] + "\n" for b in blocks)
+
+        requests: list[dict] = [
+            {"deleteContentRange": {"range": {"startIndex": section_start, "endIndex": section_end}}},
+            {"insertText": {"location": {"index": section_start}, "text": insert_text}},
+        ]
+
+        # Style each inserted paragraph. Inserted text inherits the heading style at
+        # the insertion point, so we explicitly set the style of every paragraph.
+        pos = section_start
+        for b in blocks:
+            tlen = _u16len(b["text"])
+            p_start, p_end = pos, pos + tlen
+            named = f"HEADING_{b['kind'][-1]}" if b["kind"].startswith("heading") else "NORMAL_TEXT"
+            # Reset inherited bold across the paragraph, then re-apply real bold spans.
+            requests.append({"updateTextStyle": {
+                "range": {"startIndex": p_start, "endIndex": max(p_end, p_start + 1)},
+                "textStyle": {"bold": False}, "fields": "bold"}})
+            for bs, be in b["bolds"]:
+                if be > bs:
+                    requests.append({"updateTextStyle": {
+                        "range": {"startIndex": p_start + bs, "endIndex": p_start + be},
+                        "textStyle": {"bold": True}, "fields": "bold"}})
+            requests.append({"updateParagraphStyle": {
+                "range": {"startIndex": p_start, "endIndex": p_end + 1},
+                "paragraphStyle": {"namedStyleType": named}, "fields": "namedStyleType"}})
+            if b["kind"] in ("bullet", "number"):
+                preset = "BULLET_DISC_CIRCLE_SQUARE" if b["kind"] == "bullet" else "NUMBERED_DECIMAL_ALPHA_ROMAN"
+                requests.append({"createParagraphBullets": {
+                    "range": {"startIndex": p_start, "endIndex": p_end + 1},
+                    "bulletPreset": preset}})
+            pos = p_end + 1
+
+        br = await client.post(
+            f"https://docs.googleapis.com/v1/documents/{doc_id}:batchUpdate",
+            headers=headers,
+            json={"requests": requests},
+        )
+        if not br.is_success:
+            logger.warning("Docs API batchUpdate failed for %s: %s", doc_id, br.text)
+            return False
+    return True
+
+
+@app.post("/documents/{doc_id}/regenerate-section")
+async def regenerate_doc_section(doc_id: str, req: DocRegenerateRequest, _: dict = Depends(require_auth)):
+    if not req.section_heading.strip():
+        raise HTTPException(status_code=400, detail="section_heading is required")
+
+    model = _get_doc_model(req.doc_type)
+    field_key = _doc_field_key(req.doc_type)
+    instruction_line = f"\nAdditional instructions: {req.instruction.strip()}" if req.instruction.strip() else ""
+
+    response = model.generate_content(
+        f"""You are given a complete document in Markdown format. Rewrite ONLY the section named below. Do not alter any other section, heading, or content.
+
+Section to regenerate: {req.section_heading.strip()}{instruction_line}
+
+FORMATTING RULES — follow the document template in your corporate context exactly for this section:
+- Use the same Markdown heading levels the template defines for this section and its sub-sections (e.g. `##` for a main section, `###` for sub-sections). Do NOT use bold text (`**...**`) in place of a heading.
+- Use Markdown bullet lists (`- `) for any list of items, exactly as the template does.
+- Keep the section's heading text identical to "{req.section_heading.strip()}" so it can be matched in the document.
+- Match the template's structure, field labels, and ordering for this section.
+
+Full document:
+{req.full_content}
+
+Return ONLY the complete updated Markdown document with that one section rewritten to match the template's formatting. No preamble, no explanation."""
+    )
+    updated_content = response.text
+
+    sections = _parse_sections(updated_content)
+    updated_section = next(
+        (s for s in sections if s["heading"].lower() == req.section_heading.lower()),
+        None,
+    )
+
+    # Find the heading that follows this section (so we know where it ends in the doc).
+    orig_headings = [s["heading"] for s in _parse_sections(req.full_content)]
+    next_heading = None
+    if req.section_heading in orig_headings:
+        idx = orig_headings.index(req.section_heading)
+        if idx + 1 < len(orig_headings):
+            next_heading = orig_headings[idx + 1]
+
+    # Surgical in-place edit — keeps every other section's formatting intact.
+    # Falls back to a full re-upload only if the section can't be located.
+    format_preserved = False
+    if updated_section:
+        try:
+            format_preserved = await _replace_doc_section(
+                doc_id, req.section_heading, next_heading, updated_section["content"]
+            )
+        except Exception as exc:
+            logger.warning("Surgical section replace failed for %s: %s", doc_id, exc)
+            format_preserved = False
+    if not format_preserved:
+        await _update_drive_doc(doc_id, updated_content)
+
+    return {
+        field_key: updated_content,
+        "updated_section": updated_section,
+        "full_content": updated_content,
+        "format_preserved": format_preserved,
+    }
+
+
 @app.post("/brd/log-to-sheet")
 async def brd_log_to_sheet(req: BrdLogToSheetRequest, _: dict = Depends(require_auth)):
     date_str = datetime.date.today().strftime("%-d %b %y")
