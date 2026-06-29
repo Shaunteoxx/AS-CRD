@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import CRDOutput from './CRDOutput'
+import IRDOutput from './IRDOutput'
 import { XIcon } from './Icons'
 
 export default function IRDHistoryModal({ entry, onClose }) {
@@ -34,11 +34,9 @@ export default function IRDHistoryModal({ entry, onClose }) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
-          <CRDOutput
-            crd={entry.ird}
-            crdId={entry.irdId}
-            docLabel="IRD"
-            logEndpoint={null}
+          <IRDOutput
+            ird={entry.ird}
+            irdId={entry.irdId}
           />
         </div>
       </div>

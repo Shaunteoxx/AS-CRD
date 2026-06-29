@@ -993,13 +993,23 @@ def extract_brd_objective(md: str) -> str:
 
 
 def extract_brd_crds(md: str) -> str:
+    # CR IDs use the form C-GTS / C-SPEDG (no trailing number), but also accept
+    # an optional requirement suffix like C-GTS-04. Collect from the "Originating
+    # CR(s)" header field and the Existing Reference Material section.
+    regions = []
+    orig = re.search(r'\*\*Originating CR\(s\):?\*\*\s*([^\n]+)', md, re.IGNORECASE)
+    if orig:
+        regions.append(orig.group(1))
     section = re.search(
         r'##\s*Existing Reference Material\s*\n(.*?)(?=\n##|\Z)',
         md, re.DOTALL | re.IGNORECASE,
     )
-    if not section:
-        return ""
-    crd_ids = re.findall(r'\bC-[A-Z]+-\d+\b', section.group(1))
+    if section:
+        regions.append(section.group(1))
+
+    crd_ids = []
+    for region in regions:
+        crd_ids.extend(re.findall(r'\bC-[A-Z]+(?:-\d+)?\b', region))
     return ", ".join(dict.fromkeys(crd_ids))
 
 
@@ -2246,8 +2256,14 @@ async def brd_log_to_sheet(req: BrdLogToSheetRequest, _: dict = Depends(require_
                     pass
         br_id = f"{initials}-{max(nums, default=0) + 1}"
 
+        # Column order (BR worksheet, 2026 catalogue):
+        #   1 ID | 2 Business Requirement | 3 Business Objective | 4 CRDID
+        #   5 IRDID | 6 Priority | 7 Date Submitted | 8 BRD Document
+        #   9 FeatureIDs | 10 Feature Names | 11 Release | 12 End to End
+        # IRDID/Priority and cols 9–12 aren't in the BRD doc, so they're left
+        # blank for manual entry.
         ws.append_row(
-            [br_id, title, objective, crds, date_str, req.drive_link],
+            [br_id, title, objective, crds, "", "", date_str, req.drive_link],
             value_input_option="RAW",
             insert_data_option="INSERT_ROWS",
         )

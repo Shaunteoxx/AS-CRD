@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import CRDOutput from './CRDOutput'
+import PRDOutput from './PRDOutput'
 import { XIcon } from './Icons'
 
 export default function PRDHistoryModal({ entry, onClose }) {
@@ -34,11 +34,9 @@ export default function PRDHistoryModal({ entry, onClose }) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
-          <CRDOutput
-            crd={entry.prd}
-            crdId={entry.prdId}
-            docLabel="PRD"
-            logEndpoint={null}
+          <PRDOutput
+            prd={entry.prd}
+            prdId={entry.prdId}
           />
         </div>
       </div>

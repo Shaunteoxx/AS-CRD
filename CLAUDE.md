@@ -169,7 +169,7 @@ Generated docs are logged to a spreadsheet (`gspread`, service account).
 | Doc Type | Worksheet | Columns |
 |----------|-----------|---------|
 | CRD | "CR" | filename, client_name, "", drive_link, date, "", "", "" |
-| BRD | "BR" | br_id, title, objective, crds, date, drive_link |
+| BRD | "BR" | ID (br_id), Business Requirement (title), Business Objective, CRDID (crds), IRDID (blank), Priority (blank), Date Submitted, BRD Document (drive_link) — cols 9–12 (FeatureIDs, Feature Names, Release, End to End) left blank for manual entry |
 | IRD | GID `1456248746` | ID, Internal Request, Key Request Description, Input Folder (empty), IRD Document (HYPERLINK formula) |
 
 The IRD sheet uses `get_worksheet_by_id(1456248746)` because the tab name is unknown.
